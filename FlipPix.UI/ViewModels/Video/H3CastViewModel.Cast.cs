@@ -44,9 +44,10 @@ namespace FlipPix.UI.ViewModels.Video
         private bool _isDerivingCast;
         private CancellationTokenSource? _castCts;
 
-        /// <summary>slot index → <c>"kind|role"</c> as the automatic pass last wrote it. A slot whose
-        /// live kind and Part still match its stamp is one the user has not touched since, so a later
-        /// pass may rewrite it; anything else is the user's own work and stands.</summary>
+        /// <summary>slot index → <c>"kind|role"</c> as the automatic pass last wrote it. A field that
+        /// still matches its half of the stamp is one the user has not touched since, so a later pass may
+        /// rewrite it; anything else is the user's own work and stands. Read through
+        /// <see cref="AutoStampFor"/>.</summary>
         private readonly Dictionary<int, string> _autoCastStamp = new();
 
         #region Cast detection — the story names them, the tab casts them
@@ -127,18 +128,45 @@ namespace FlipPix.UI.ViewModels.Video
             }
         }
 
+        /// <summary>The kind and Part this pass last wrote into a slot, or nulls if it never wrote one.
+        /// Split apart because the two are answerable separately: the user moving the sex dropdown on a
+        /// card does not make its Part theirs, and vice versa.</summary>
+        private (string? Kind, string? Role) AutoStampFor(int index)
+        {
+            if (!_autoCastStamp.TryGetValue(index, out var stamp)) return (null, null);
+            var bar = stamp.IndexOf('|');
+            return bar < 0 ? (null, null) : (stamp[..bar], stamp[(bar + 1)..]);
+        }
+
         /// <summary>
-        /// Whether the automatic cast pass may write this card: never one with a photo (browsed or
-        /// generated — a photo is the user saying "this one is cast"), and otherwise either a pristine
-        /// card (default sex, no Part) or one this pass itself filled and the user has not touched
-        /// since.
+        /// Whether the automatic cast pass may write this card's Part — either a card with no Part on it
+        /// yet, or one this pass itself filled and the user has not typed over since.
+        ///
+        /// <para><b>A photo does not stop it.</b> The picture says who this character <i>is</i>; the Part
+        /// says who they are <i>in this story</i>, and pasting a new story is exactly the moment those two
+        /// stop agreeing. Blocking on the photo meant a tab whose cast had been picked first — which is how
+        /// H3 Eros is used — kept the previous story's parts under the cards while the wardrobe, which
+        /// never asked about photos, re-dressed everyone for the new one. The sex is a separate question,
+        /// and there the photo does decide: see <see cref="SlotKindIsFree"/>.</para>
         /// </summary>
         private bool SlotIsFree(CharacterSlot c)
         {
-            if (c.HasSource) return false;
-            if (_autoCastStamp.TryGetValue(c.Index, out var stamp))
-                return stamp == $"{c.Kind}|{c.Role}";
+            var (_, role) = AutoStampFor(c.Index);
+            if (role != null) return role == c.Role;
             return !c.HasRole && (c.Kind == CharacterSlot.Male || c.Kind == CharacterSlot.Female);
+        }
+
+        /// <summary>
+        /// Whether the pass may also set this card's <i>sex</i>. A browsed or generated photo pins it — the
+        /// picture decides who is on screen, and flipping a photographed woman to "Male" because the new
+        /// story's first lead is a man would leave the card describing somebody who is not in it. Without a
+        /// photo it is the same rule as the Part: ours to move until the user moves it.
+        /// </summary>
+        private bool SlotKindIsFree(CharacterSlot c)
+        {
+            if (c.HasSource) return false;
+            var (kind, _) = AutoStampFor(c.Index);
+            return kind == null || kind == c.Kind;
         }
 
         /// <summary>
@@ -157,16 +185,21 @@ namespace FlipPix.UI.ViewModels.Video
             {
                 if (i < taken.Count)
                 {
-                    free[i].Kind = taken[i].Kind;
+                    // The sex only moves on a card whose photo has not already answered it.
+                    if (SlotKindIsFree(free[i])) free[i].Kind = taken[i].Kind;
                     free[i].Role = taken[i].Role;
-                    _autoCastStamp[free[i].Index] = $"{taken[i].Kind}|{taken[i].Role}";
+                    // Stamped from the live card, not from what was detected: the kind may have been
+                    // left alone above, and the Role setter trims. A stamp that does not match what the
+                    // card now reads would look like the user's own edit on the next story.
+                    _autoCastStamp[free[i].Index] = $"{free[i].Kind}|{free[i].Role}";
                 }
                 else if (_autoCastStamp.ContainsKey(free[i].Index))
                 {
                     // Only auto-filled cards are retired — a pristine card stays pristine, and the
                     // user's own cards were never in this list.
                     free[i].Role = string.Empty;
-                    free[i].Kind = free[i].Index % 2 == 0 ? CharacterSlot.Female : CharacterSlot.Male;
+                    if (SlotKindIsFree(free[i]))
+                        free[i].Kind = free[i].Index % 2 == 0 ? CharacterSlot.Female : CharacterSlot.Male;
                     _autoCastStamp.Remove(free[i].Index);
                     retired++;
                 }

@@ -309,6 +309,37 @@ namespace FlipPix.UI
             => _scail2IsPlaying = false;
 
         /// <summary>
+        /// Opens the picture behind a cast thumbnail at full size, in whatever the user has set as their
+        /// image viewer — the card's frames are 92px tall, which shows which photo is loaded but not whether
+        /// the face in it is the right one.
+        ///
+        /// <para>Tag carries the path (SourcePath on the photo, SheetPath on the built sheet); an empty
+        /// frame, or a file that has since been moved or deleted, does nothing rather than raising a shell
+        /// error the user cannot act on.</para>
+        /// </summary>
+        private void CastThumbnail_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement { Tag: string path } || string.IsNullOrWhiteSpace(path)) return;
+            if (!System.IO.File.Exists(path)) return;
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true,   // the shell, not us, decides which viewer opens it
+                });
+                e.Handled = true;
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Could not open {System.IO.Path.GetFileName(path)}: {ex.Message}",
+                    "FlipPix", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        /// <summary>
         /// Opens a cast card's ✨ Generate menu on a left click (WPF only opens a Button's ContextMenu
         /// on right-click by itself). The menu's bindings go through PlacementTarget — see the card
         /// templates in VideoGeneratorWindow.xaml.

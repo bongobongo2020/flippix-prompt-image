@@ -17,6 +17,23 @@
 
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+
+        <!-- A cast card's thumbnail. 92px is enough to tell which picture is loaded and not enough to
+             judge a face, so clicking one hands the file to the shell and it opens at full size in
+             whatever the user has set as their image viewer. Tag carries the path — SourcePath on the
+             photo, SheetPath on the built sheet — and an empty Tag is an empty frame: no hand cursor,
+             no tooltip, and the handler does nothing. -->
+        <Style x:Key="CastThumbnailStyle" TargetType="Border">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTip" Value="Click to open this picture at full size in your image viewer."/>
+            <EventSetter Event="MouseLeftButtonUp" Handler="CastThumbnail_MouseLeftButtonUp"/>
+            <Style.Triggers>
+                <Trigger Property="Tag" Value="">
+                    <Setter Property="Cursor" Value="Arrow"/>
+                    <Setter Property="ToolTip" Value="{x:Null}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -726,7 +743,8 @@
 
                                                         <!-- Source photo -->
                                                         <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SourcePath}">
                                                             <Grid>
                                                                 <TextBlock Text="Photo"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -748,7 +766,8 @@
 
                                                         <!-- Built sheet -->
                                                         <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SheetPath}">
                                                             <Grid>
                                                                 <TextBlock Text="Sheet → H3"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -907,7 +926,8 @@
                                                         </Grid.ColumnDefinitions>
 
                                                         <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SourcePath}">
                                                             <Grid>
                                                                 <TextBlock Text="Photo"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -928,7 +948,8 @@
                                                         </Border>
 
                                                         <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SheetPath}">
                                                             <Grid>
                                                                 <TextBlock Text="Sheet → H3"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -4569,7 +4590,8 @@
 
                                                         <!-- Source photo -->
                                                         <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SourcePath}">
                                                             <Grid>
                                                                 <TextBlock Text="Photo"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -4591,7 +4613,8 @@
 
                                                         <!-- Built sheet -->
                                                         <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SheetPath}">
                                                             <Grid>
                                                                 <TextBlock Text="Sheet → H3"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -4750,7 +4773,8 @@
                                                         </Grid.ColumnDefinitions>
 
                                                         <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SourcePath}">
                                                             <Grid>
                                                                 <TextBlock Text="Photo"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -4771,7 +4795,8 @@
                                                         </Border>
 
                                                         <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SheetPath}">
                                                             <Grid>
                                                                 <TextBlock Text="Sheet → H3"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -5587,7 +5612,8 @@
 
                                                         <!-- Source photo -->
                                                         <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SourcePath}">
                                                             <Grid>
                                                                 <TextBlock Text="Photo"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -5609,7 +5635,8 @@
 
                                                         <!-- Built sheet -->
                                                         <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SheetPath}">
                                                             <Grid>
                                                                 <TextBlock Text="Sheet → H3"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -5768,7 +5795,8 @@
                                                         </Grid.ColumnDefinitions>
 
                                                         <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SourcePath}">
                                                             <Grid>
                                                                 <TextBlock Text="Photo"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -5789,7 +5817,8 @@
                                                         </Border>
 
                                                         <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92">
+                                                                CornerRadius="6" Background="{StaticResource SurfaceAltBrush}" Height="92"
+                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SheetPath}">
                                                             <Grid>
                                                                 <TextBlock Text="Sheet → H3"
                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -6740,7 +6769,8 @@
                                                                         </Grid.ColumnDefinitions>
 
                                                                         <Border Grid.Column="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                                CornerRadius="6" Background="White" Height="80">
+                                                                                CornerRadius="6" Background="White" Height="80"
+                                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SourcePath}">
                                                                             <Grid>
                                                                                 <TextBlock Text="Photo"
                                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -6761,7 +6791,8 @@
                                                                         </Border>
 
                                                                         <Border Grid.Column="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                                                CornerRadius="6" Background="White" Height="80">
+                                                                                CornerRadius="6" Background="White" Height="80"
+                                                                                Style="{StaticResource CastThumbnailStyle}" Tag="{Binding SheetPath}">
                                                                             <Grid>
                                                                                 <TextBlock Text="Sheet → H3"
                                                                                            HorizontalAlignment="Center" VerticalAlignment="Center"

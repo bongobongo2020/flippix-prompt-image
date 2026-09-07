@@ -85,6 +85,13 @@ namespace FlipPix.UI.ViewModels.Video
         protected virtual string OutputSubfolder => "h3_cast";
         /// <summary>The stem of this tab's output files and joined stories — "H3Cast" / "H3Duo".</summary>
         protected virtual string OutputFileStem => "H3Cast";
+
+        /// <summary>Appended to every finished clip and to the joined story, immediately before the
+        /// extension. Empty for every tab but 🥽 H3 VR, which has to end its files in <c>_LR_180</c>
+        /// because that is where a headset player looks to decide the clip is a stereo pair — see
+        /// <see cref="H3VrViewModel"/>. A suffix rather than part of <see cref="OutputFileStem"/>
+        /// precisely because it only works as the last thing before ".mp4".</summary>
+        protected virtual string OutputFileSuffix => string.Empty;
         private const string SystemPromptFile = "texttovideoH3.md";
         private const string SheetPromptFile = "h3-charsheet-2511.md";
 
@@ -290,7 +297,7 @@ namespace FlipPix.UI.ViewModels.Video
         private bool _isBuildingSheets;
         private string _sheetPhase = string.Empty;
 
-        private readonly IFileDialogService _fileDialogService;
+        protected readonly IFileDialogService _fileDialogService;
         // Protected so derived tabs can issue their own llama-server calls (the H3 Experimental
         // fork's MCP tool loop) against the same configured server.
         protected readonly LMStudioService _lmStudioService;
@@ -353,8 +360,10 @@ namespace FlipPix.UI.ViewModels.Video
             ClearStoryCommand = new RelayCommand(() => StoryText = string.Empty, () => HasStoryText);
             DeriveWardrobeCommand = new RelayCommand(async () => await RederiveWardrobeAsync(), () => CanAnalyze);
             ClearWardrobeCommand = new RelayCommand(ClearWardrobe, () => HasCastWardrobe);
+            ClearDerivedCastCommand = new RelayCommand(ClearDerivedCast, () => HasDerivedCast);
             ToggleWardrobeLockCommand = new RelayCommand(() => IsWardrobeLocked = !IsWardrobeLocked);
             BuildSheetsCommand = new RelayCommand(async () => await BuildSheetsAsync(), () => CanBuildSheets);
+            FeelLuckyCommand = new RelayCommand(async () => await FeelLuckyAsync(), () => CanFeelLucky);
             AnalyzeCommand = new RelayCommand(async () => await AnalyzeAsync(), () => CanAnalyze);
             GenerateCommand = new RelayCommand(AddToQueue, () => CanGenerate);
             CancelCommand = new RelayCommand(CancelEverything, () => IsProcessingQueue || IsProcessing || IsBuildingSheets);
@@ -401,9 +410,16 @@ namespace FlipPix.UI.ViewModels.Video
         /// <summary>Re-asks the llama-server for the cast's outfits, replacing whatever is in the box.</summary>
         public RelayCommand DeriveWardrobeCommand { get; }
         public RelayCommand ClearWardrobeCommand { get; }
+        /// <summary>🧹 — throws away everything the story wrote about the cast (both Parts, the sexes no
+        /// photo has answered for, and the wardrobe with them) so a newly pasted story writes them from
+        /// scratch. See <see cref="ClearDerivedCast"/> in H3CastViewModel.Cast.cs.</summary>
+        public RelayCommand ClearDerivedCastCommand { get; }
         /// <summary>🔒/🔓 — hands the wardrobe box between the story watcher and the user.</summary>
         public RelayCommand ToggleWardrobeLockCommand { get; }
         public RelayCommand BuildSheetsCommand { get; }
+
+        /// <summary>The whole chain from a pasted story, unattended. See <see cref="FeelLuckyAsync"/>.</summary>
+        public RelayCommand FeelLuckyCommand { get; }
         public RelayCommand AnalyzeCommand { get; }
         /// <summary>Named for the button it drives; it enqueues rather than running inline.</summary>
         public RelayCommand GenerateCommand { get; }
@@ -509,6 +525,7 @@ namespace FlipPix.UI.ViewModels.Video
             if (path == null) return;
             slot.SourcePath = path;
             AddLog($"Character {slot.Index}: {Path.GetFileName(path)}");
+            await AdoptSheetFromLibraryAsync(slot);
         }
 
         private async Task SelectSceneImageAsync()
@@ -574,6 +591,112 @@ namespace FlipPix.UI.ViewModels.Video
         public bool CanBuildSheets => HasCharacter1 && !IsBuildingSheets &&
                                       LoadedCharacters.Any(c => !c.UseSourceAsSheet);
 
+        // ── The sheet library ───────────────────────────────────────────────────────────────────────
+
+        private CastSheetLibrary? _sheetLibrary;
+        private Task? _sheetLibrarySync;
+        private bool _reuseSheets = true;
+
+        /// <summary>
+        /// Load a photograph this app has already built a sheet from, and take that sheet back instead of
+        /// paying for it again. Off turns the library into a write-only archive: sheets are still filed as
+        /// they are built, nothing is ever adopted.
+        ///
+        /// <para>On by default because building the same sheet twice buys nothing — Qwen is sampled with a
+        /// fresh seed each time, so a rebuild is a <i>different</i> sheet of the same person, and a chain
+        /// already queued against the old one is now referencing a face that no longer exists on disk.</para>
+        /// </summary>
+        public bool ReuseSheetsFromLibrary
+        {
+            get => _reuseSheets;
+            set
+            {
+                if (_reuseSheets == value) return;
+                _reuseSheets = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(SheetLibrarySummary));
+            }
+        }
+
+        public string SheetLibrarySummary =>
+            ReuseSheetsFromLibrary
+                ? "Loading a photo this app has already built a sheet from brings that sheet straight back — " +
+                  "no render, no GPU. New sheets are filed as they are built."
+                : "Sheets are filed but never reused — every photo is sent to Qwen again, even one whose " +
+                  "sheet is already on disk.";
+
+        /// <summary>The library, built on first use rather than in the constructor — it touches disk, and
+        /// this view model is constructed on the window's startup path. See [[project_ui_thread_io]].</summary>
+        protected CastSheetLibrary SheetLibrary
+        {
+            get
+            {
+                if (_sheetLibrary != null) return _sheetLibrary;
+                var folder = _settingsService.Settings?.CastSheetLibraryFolder;
+                _sheetLibrary = new CastSheetLibrary(folder, AddLog);
+                // The one expensive pass — reading the build log back — runs once, in the background, and
+                // nothing waits on it. A photo loaded before it finishes simply misses; the next one hits.
+                _sheetLibrarySync = _sheetLibrary.SyncAsync();
+                return _sheetLibrary;
+            }
+        }
+
+        /// <summary>
+        /// Called the moment a card is given a photograph. If a sheet has already been built from that
+        /// exact picture, it is put back on the card as though the build had just finished.
+        ///
+        /// <para>Fire-and-forget on purpose: the caller is a click handler, the lookup hashes a file, and a
+        /// card that has no sheet yet is the state the user is already looking at. Failure is silent beyond
+        /// the log — the ordinary 🪪 Build Sheets path is untouched and still there.</para>
+        /// </summary>
+        protected async Task AdoptSheetFromLibraryAsync(CharacterSlot slot)
+        {
+            if (!ReuseSheetsFromLibrary || slot.UseSourceAsSheet || slot.HasSheet) return;
+            var source = slot.SourcePath;
+            if (string.IsNullOrEmpty(source)) return;
+
+            try
+            {
+                var library = SheetLibrary;
+                if (_sheetLibrarySync != null) await _sheetLibrarySync.ConfigureAwait(false);
+
+                var match = await library.FindAsync(source).ConfigureAwait(false);
+                if (match == null) return;
+
+                // The card may have moved on while the disk was being read — a second photo picked, or the
+                // slot cleared. Adopting then would put a stranger's sheet on someone else's card.
+                var stillThere = false;
+                Application.Current.Dispatcher.Invoke(() =>
+                    stillThere = string.Equals(slot.SourcePath, source, StringComparison.OrdinalIgnoreCase)
+                                 && !slot.HasSheet && !slot.UseSourceAsSheet);
+                if (!stillThere) return;
+
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    slot.SetSheet(match.SheetPath, match.Entry.Wardrobe);
+                    OnCharacterChanged();
+                });
+
+                var how = match.Confidence switch
+                {
+                    CastSheetLibrary.MatchKind.SourcePath => "the same file",
+                    CastSheetLibrary.MatchKind.SourceHash => "the same picture under a different name",
+                    _ => "the same file name — from the build log, so check the face is right"
+                };
+                AddLog($"Character {slot.Index}: a sheet for this photo already existed and has been " +
+                       $"loaded ({Path.GetFileName(match.SheetPath)}, matched on {how}). " +
+                       (string.IsNullOrWhiteSpace(match.Entry.Wardrobe)
+                            ? "No wardrobe was recorded with it."
+                            : $"It was built wearing: {match.Entry.Wardrobe}") +
+                       " Press 🪪 Build Sheets to replace it with a new one.");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"Character {slot.Index}: the sheet library could not be checked ({ex.Message}) — " +
+                       "build the sheet as usual.");
+            }
+        }
+
         /// <summary>True while the sheet builder is waiting for the GPU or generating. Its own flag, kept
         /// apart from <see cref="VideoProcessingBaseViewModel.IsProcessing"/> so the two can overlap without
         /// fighting over the progress bar a render owns.</summary>
@@ -617,7 +740,11 @@ namespace FlipPix.UI.ViewModels.Video
         /// photo still reaches the model — <c>TextEncodeQwenImageEditPlus</c> carries it as the edit
         /// reference, which is what keeps the face on model.</para>
         /// </summary>
-        private async Task BuildSheetsAsync()
+        /// <param name="onlyMissing">Build only the characters that have no sheet, or whose sheet was
+        /// photographed in a different wardrobe. False - what the sheet button passes - rebuilds the lot,
+        /// which is what a button called "Build Sheets" has to mean. I'm Feeling Lucky passes true, so a
+        /// sheet the library just handed back for free is not immediately paid for again.</param>
+        private async Task BuildSheetsAsync(bool onlyMissing = false)
         {
             if (!CanBuildSheets) return;
 
@@ -631,7 +758,16 @@ namespace FlipPix.UI.ViewModels.Video
             WorkflowQueueCoordinator.WorkflowLease? lease = null;
             try
             {
-                var todo = LoadedCharacters.Where(c => !c.UseSourceAsSheet).ToList();
+                var todo = LoadedCharacters
+                    .Where(c => !c.UseSourceAsSheet)
+                    .Where(c => !onlyMissing || !c.HasSheet || !c.SheetMatchesWardrobe)
+                    .ToList();
+                if (todo.Count == 0)
+                {
+                    AddLog("Sheets: every character already has one in the locked wardrobe - nothing to build.");
+                    SheetPhase = "Sheets ready.";
+                    return;
+                }
                 AddLog($"=== H3 Cast: building {todo.Count} character sheet(s) with Qwen-Image-Edit-2511 ===");
 
                 // Settled before the GPU is even queued for — the sheet is the reference H3 dresses the video
@@ -738,6 +874,10 @@ namespace FlipPix.UI.ViewModels.Video
             var wornInSheet = outfit;
             Application.Current.Dispatcher.Invoke(() => slot.SetSheet(applied, wornInSheet));
             AddLog($"Character {slot.Index}: sheet ready — {Path.GetFileName(local)}");
+
+            // Filed after the card has it, never before: the sheet is this run's whatever happens next, and
+            // a library write that failed must not read as a build that failed.
+            await SheetLibrary.RecordAsync(slot.SourcePath, applied, slot.Index, slot.Noun, wornInSheet, token);
         }
 
         /// <summary>
@@ -966,6 +1106,7 @@ namespace FlipPix.UI.ViewModels.Video
                 OnPropertyChanged(nameof(SheetsShowWardrobe));
                 OnPropertyChanged(nameof(CastSummary));
                 ClearWardrobeCommand.NotifyCanExecuteChanged();
+                ClearDerivedCastCommand.NotifyCanExecuteChanged();
             }
         }
 
@@ -1155,6 +1296,16 @@ namespace FlipPix.UI.ViewModels.Video
         /// </summary>
         /// <summary>Virtual so a derived tab can react to a story file landing (the H3 Experimental
         /// fork auto-runs its prompt writer the moment a .txt is loaded).</summary>
+        /// <summary>Puts a story into the box and remembers which file it came from. Shared by the
+        /// 📄 Load .txt button and by 🗂️ H3 Batch, which walks a folder of them — the file name is not
+        /// cosmetic, it is what names that story's clips and its joined film.</summary>
+        protected void SetStory(string text, string fileName)
+        {
+            StoryText = text;
+            _storyFileName = fileName;
+            OnPropertyChanged(nameof(StorySourceSummary));
+        }
+
         protected virtual async Task LoadStoryFileAsync()
         {
             var initialDir = _settingsService.Settings?.VideoGeneratorImageFolder;
@@ -1177,9 +1328,7 @@ namespace FlipPix.UI.ViewModels.Video
                     return;
                 }
 
-                StoryText = text;
-                _storyFileName = Path.GetFileName(path);
-                OnPropertyChanged(nameof(StorySourceSummary));
+                SetStory(text, Path.GetFileName(path));
                 AddLog($"Story loaded: {_storyFileName} ({text.Length:N0} chars)");
             }
             catch (Exception ex)
@@ -1877,7 +2026,7 @@ namespace FlipPix.UI.ViewModels.Video
                 // around it.
                 var cast = HasCharacter2
                     ? $"Two character reference sheets will additionally be given to the video model and are addressed as <Picture 1> (Character 1, a {_character1.Noun}) and <Picture 2> (Character 2, a {_character2.Noun}). Each sheet is one person shown from several angles on a plain studio background. You are NOT shown those sheets — the video model is. Write both characters into the action and refer to them ONLY by those tags — wherever the story names its people, cast <Picture 1> and <Picture 2> in those roles and use the tags in place of the names. Their sexes are as stated here, so use the matching pronouns; apart from that, do not write any word for their hair, face, skin, build or age, since the tag already carries all of it. " + wardrobeRule
-                    : $"One character reference sheet will additionally be given to the video model and is addressed as <Picture 1> (Character 1, a {_character1.Noun}). The sheet is one person shown from several angles on a plain studio background. You are NOT shown that sheet — the video model is. Write them into the action and refer to them ONLY by that tag — wherever the story names its protagonist, cast <Picture 1> in that role and use the tag in place of the name. Their sex is as stated here, so use the matching pronouns; apart from that, do not write any word for their hair, face, skin, build or age, since the tag already carries all of it. " + wardrobeRule;
+                    : $"One character reference sheet will additionally be given to the video model and is addressed as <Picture 1> (Character 1, a {_character1.Noun}). The sheet is one person shown from several angles on a plain studio background. You are NOT shown that sheet — the video model is. Write them into the action and refer to them ONLY by that tag — wherever the story names its protagonist, cast <Picture 1> in that role and use the tag in place of the name. Their sex is as stated here, so use the matching pronouns; apart from that, do not write any word for their hair, face, skin, build or age, since the tag already carries all of it. " + wardrobeRule + SoloCastDirective;
 
                 // Ahead of the story rather than after it: the writer decides the medium in its first
                 // sentence, and a rule that arrives after the material has already been read is one the
@@ -2804,11 +2953,180 @@ namespace FlipPix.UI.ViewModels.Video
         /// <summary>Stops whichever half of the tab is on the GPU — the sheet builder or the queue.</summary>
         private void CancelEverything()
         {
+            _luckyCts?.Cancel();
             _sheetCts?.Cancel();
             _queueCts?.Cancel();
             // Including the wardrobe pass the story watcher may have queued behind the user's back.
             _wardrobeCts?.Cancel();
         }
+
+        // ── 🍀 I'm Feeling Lucky ────────────────────────────────────────────────────────────────────
+
+        private CancellationTokenSource? _luckyCts;
+        private bool _isFeelingLucky;
+        private string _luckyPhase = string.Empty;
+
+        /// <summary>True while the whole chain is running itself. Its own flag rather than a reuse of
+        /// <see cref="IsBuildingSheets"/> or <see cref="IsProcessingQueue"/>, because it spans both and
+        /// outlives each — the button has to stay disabled between the steps, not flicker back on.</summary>
+        public bool IsFeelingLucky
+        {
+            get => _isFeelingLucky;
+            private set
+            {
+                if (_isFeelingLucky == value) return;
+                _isFeelingLucky = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(LuckyButtonText));
+                OnCanExecuteChanged();
+            }
+        }
+
+        /// <summary>Which of the six steps is running, for the line under the button.</summary>
+        public string LuckyPhase
+        {
+            get => _luckyPhase;
+            private set { if (_luckyPhase == value) return; _luckyPhase = value; OnPropertyChanged(); }
+        }
+
+        public string LuckyButtonText => IsFeelingLucky ? "🍀 Running…" : "🍀 I'm Feeling Lucky";
+
+        /// <summary>A story is all it needs; everything else it makes for itself.</summary>
+        public bool CanFeelLucky =>
+            (HasStoryText || HasSceneImage) && !IsFeelingLucky && !IsBuildingSheets &&
+            !IsProcessingQueue && !IsWritingPrompt;
+
+        /// <summary>
+        /// Last chance for a fork to put the queue into unattended mode before 🍀 starts it. The base queue
+        /// renders each item to completion by itself and needs nothing; the hunt-board tabs stop at a board
+        /// full of takes unless auto-pick and auto-finish are on, so <see cref="H3ErosViewModel"/> overrides
+        /// this and turns them on.
+        /// </summary>
+        protected virtual void PrepareForUnattendedRun() { }
+
+        /// <summary>
+        /// The whole pipeline, once, from a story: read the cast out of it, dress them, photograph them,
+        /// build their sheets, write the clips, queue them, render them, pick the takes and join the film.
+        /// Six model-and-GPU steps that are otherwise six buttons pressed in order with waiting in between.
+        ///
+        /// <para><b>It is a sequence, not a second pipeline.</b> Every step is the same method its own
+        /// button calls, in the order the tab already implies, so there is one implementation of each and no
+        /// copy to drift. What 🍀 adds is the waiting: the cast and wardrobe passes are normally
+        /// <i>debounced</i> — they fire 2.5 s after typing stops — and a run that photographs its characters
+        /// cannot hope a debounce has landed. So it forces both and awaits them
+        /// (<see cref="DeriveCastNowAsync"/>, <see cref="EnsureWardrobeAsync"/>) before anything renders.
+        /// A card with no Part on it yet photographs nobody in particular, and the whole film is then built
+        /// on that.</para>
+        ///
+        /// <para><b>What it will not do.</b> It never overwrites work already there: a card with a photo
+        /// keeps it, a character whose sheet already matches the locked wardrobe is not re-sheeted (which is
+        /// what makes the sheet library worth having), and it stops rather than guessing when a step comes
+        /// back empty. Everything it does make goes through the ordinary setters, so the cards, the queue and
+        /// the board end up exactly as they would had the buttons been pressed by hand.</para>
+        ///
+        /// <para>✕ Cancel stops it between steps, and inside any step that was already cancellable.</para>
+        /// </summary>
+        protected async Task FeelLuckyAsync()
+        {
+            if (!CanFeelLucky) return;
+
+            _luckyCts?.Dispose();
+            _luckyCts = new CancellationTokenSource();
+            var token = _luckyCts.Token;
+
+            IsFeelingLucky = true;
+            var started = DateTime.Now;
+            try
+            {
+                AddLog("=== 🍀 I'm Feeling Lucky: cast → wardrobe → photos → sheets → clips → render → join ===");
+
+                // 1. Who is in this story. Forced rather than waited for; see the remarks.
+                LuckyPhase = "1/6 · Reading the cast out of the story…";
+                await DeriveCastNowAsync(token, quiet: false);
+                token.ThrowIfCancellationRequested();
+                if (!_character1.IsCast)
+                {
+                    AddLog("🍀 stopped: no character could be read out of the story, and card 1 is empty. " +
+                           "Write a Part on it, or load a photo, and press 🍀 again.");
+                    return;
+                }
+
+                // 2. What they wear. Before the photos, because the portrait is generated wearing it.
+                LuckyPhase = "2/6 · Deciding the wardrobe…";
+                await EnsureWardrobeAsync(token);
+                token.ThrowIfCancellationRequested();
+
+                // 3. Their photographs — only for the cards that have none.
+                var toShoot = new[] { _character1, _character2 }
+                    .Where(c => c.IsCast && !c.HasSource).ToList();
+                if (toShoot.Count == 0)
+                    AddLog("🍀 the cast already have their photos — keeping them.");
+                for (var i = 0; i < toShoot.Count; i++)
+                {
+                    token.ThrowIfCancellationRequested();
+                    LuckyPhase = $"3/6 · Photographing character {toShoot[i].Index}" +
+                                 (toShoot.Count > 1 ? $" ({i + 1}/{toShoot.Count})" : string.Empty) + "…";
+                    await GenerateCastPhotoAsync(toShoot[i], LuckyPhotoEngine);
+                }
+
+                // 4. Their sheets. onlyMissing, so a sheet the library handed back is not paid for twice.
+                token.ThrowIfCancellationRequested();
+                LuckyPhase = "4/6 · Building the character sheets…";
+                await BuildSheetsAsync(onlyMissing: true);
+                token.ThrowIfCancellationRequested();
+                if (!AllSheetsReady)
+                {
+                    AddLog("🍀 stopped after the sheets: not every character has one, so the clips would be " +
+                           "written against a cast that is not all there.");
+                    return;
+                }
+
+                // 5. The clips, and the queue.
+                LuckyPhase = "5/6 · Writing the clips…";
+                await AnalyzeAsync();
+                token.ThrowIfCancellationRequested();
+                if (!CanGenerate)
+                {
+                    AddLog("🍀 stopped after Analyze: no prompt was written, so there is nothing to queue.");
+                    return;
+                }
+                AddToQueue();
+                if (!HasPendingItems)
+                {
+                    AddLog("🍀 stopped: nothing reached the queue.");
+                    return;
+                }
+
+                // 6. Render it. PrepareForUnattendedRun is what stops a hunt-board tab parking at the board.
+                LuckyPhase = "6/6 · Rendering, picking and joining…";
+                PrepareForUnattendedRun();
+                await ProcessQueueAsync();
+
+                LuckyPhase = $"Done in {(DateTime.Now - started).TotalMinutes:0.#} min.";
+                AddLog($"=== 🍀 finished in {(DateTime.Now - started).TotalMinutes:0.#} min ===");
+            }
+            catch (OperationCanceledException)
+            {
+                LuckyPhase = "Cancelled.";
+                AddLog("🍀 cancelled.");
+            }
+            catch (Exception ex)
+            {
+                LuckyPhase = $"Stopped: {ex.Message}";
+                AddLog($"🍀 stopped: {ex.Message}");
+            }
+            finally
+            {
+                IsFeelingLucky = false;
+                _luckyCts?.Dispose();
+                _luckyCts = null;
+                OnCanExecuteChanged();
+            }
+        }
+
+        /// <summary>Which Image Generator base graph 🍀 photographs the cast with. Krea2-Spicy: its LoRAs
+        /// are baked in, so there is nothing for an unattended run to have to choose.</summary>
+        protected virtual string LuckyPhotoEngine => "krea2spicy";
 
         private void ReprocessAllFailed()
         {
@@ -2986,7 +3304,7 @@ namespace FlipPix.UI.ViewModels.Video
 
             // Re-running a chain (after retrying a failed clip) re-joins the same story from the same clips,
             // so overwriting this file is a refresh, not a loss.
-            var joinedPath = Path.Combine(outputDir, $"{OutputFileStem}_{storyId}_joined.mp4");
+            var joinedPath = Path.Combine(outputDir, $"{OutputFileStem}_{storyId}_joined{OutputFileSuffix}.mp4");
             var total = clips.Sum(c => ClampLength(c.LengthSeconds));
 
             ProcessingStatus = $"Joining {paths.Count} clips...";
@@ -3105,6 +3423,17 @@ namespace FlipPix.UI.ViewModels.Video
                 System.Windows.Threading.DispatcherPriority.Background);
         }
 
+        /// <summary>
+        /// Last chance to fix up an item read back from disk, before anything else sees it. Does nothing
+        /// here; 🥽🎯 H3 VR uses it to migrate prompts written before its stereo scene rule existed.
+        ///
+        /// <para>A prompt rewritten here is deliberately allowed to disagree with the item's
+        /// <see cref="H3CastQueueItem.HuntPromptStamp"/>, which is what marks an already-hunted clip stale —
+        /// the drafts on its board were sampled from the old text, and finishing one would deliver a video
+        /// nobody has seen. Staleness is the correct outcome of a migration, not a side effect of it.</para>
+        /// </summary>
+        protected virtual void OnQueueItemLoaded(H3CastQueueItem item) { }
+
         private async Task LoadQueueFromFileAsync()
         {
             try
@@ -3121,6 +3450,7 @@ namespace FlipPix.UI.ViewModels.Video
                     if (item.ItemStatus == QueueItemStatus.Completed) continue;
                     // Anything left mid-flight by a crash or a close is unfinished work, not a running job.
                     if (item.ItemStatus == QueueItemStatus.Processing) item.ItemStatus = QueueItemStatus.Pending;
+                    OnQueueItemLoaded(item);
                     _queue.Add(item);
                 }
 
@@ -4222,10 +4552,13 @@ namespace FlipPix.UI.ViewModels.Video
             OnPropertyChanged(nameof(CanAnalyze));
             OnPropertyChanged(nameof(CanGenerate));
             OnPropertyChanged(nameof(CanBuildSheets));
+            OnPropertyChanged(nameof(CanFeelLucky));
+            OnPropertyChanged(nameof(LuckyButtonText));
             OnPropertyChanged(nameof(BuildSheetsButtonText));
             OnPropertyChanged(nameof(AllSheetsReady));
             OnPropertyChanged(nameof(CastSummary));
             BuildSheetsCommand.NotifyCanExecuteChanged();
+            FeelLuckyCommand.NotifyCanExecuteChanged();
             AnalyzeCommand.NotifyCanExecuteChanged();
             DeriveWardrobeCommand.NotifyCanExecuteChanged();
             GenerateCommand.NotifyCanExecuteChanged();
@@ -4242,6 +4575,7 @@ namespace FlipPix.UI.ViewModels.Video
             GenerateCastKrea2LoraCommand.NotifyCanExecuteChanged();
             GenerateCastQwenCommand.NotifyCanExecuteChanged();
             GenerateCastKrea2SpicyCommand.NotifyCanExecuteChanged();
+            ClearDerivedCastCommand.NotifyCanExecuteChanged();
         }
     }
 

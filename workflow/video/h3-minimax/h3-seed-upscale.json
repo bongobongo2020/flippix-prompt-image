@@ -1,0 +1,485 @@
+{
+  "171:4": {
+    "inputs": {
+      "unet_name": "h3-minimax/minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNETLoader"
+    }
+  },
+  "171:3": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "CLIPLoader"
+    }
+  },
+  "171:2": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "171:1": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "sla": {
+    "inputs": {
+      "model": [
+        "171:4",
+        0
+      ],
+      "sparsity_ratio": 0.9,
+      "block_size": "64",
+      "min_seq_len": 8192,
+      "dense_last_steps": 0,
+      "protect_audio": true,
+      "enabled": true
+    },
+    "class_type": "H3SLAAttention",
+    "_meta": {
+      "title": "H3 SLA Attention 0.9/64"
+    }
+  },
+  "shift": {
+    "inputs": {
+      "model": [
+        "sla",
+        0
+      ],
+      "shift_video": 12.0,
+      "shift_audio": 3.0
+    },
+    "class_type": "MiniMaxH3SigmaShift",
+    "_meta": {
+      "title": "MiniMaxH3SigmaShift"
+    }
+  },
+  "22:11": {
+    "inputs": {
+      "value": "PASTE YOUR PROMPT HERE, in the reference contract:\nsubject_definitions:\n<Subject 1> is the person in <Picture 1>; their face, hair and clothing follow <Picture 1>.\n\nsummary:\n[reference generation] one continuous shot of <Subject 1> doing X, appearance taken from <Picture 1>.\n\nretention_analysis:\n<Subject 1> is fully preserved from <Picture 1>.\n\ndetailed_description:\n[Shot 1] ... camera, action, timing ...\n\noverall_soundscape: ...\n\nnon_diegetic_music: N/A"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Prompt"
+    }
+  },
+  "22:23": {
+    "inputs": {
+      "value": 10.0
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Video Length (seconds)"
+    }
+  },
+  "22:24": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "22:23",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "ComfyMathExpression"
+    }
+  },
+  "22:9": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.7,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector (Size)"
+    }
+  },
+  "22:8": {
+    "inputs": {
+      "value": 4
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "TOTAL STEPS"
+    }
+  },
+  "22:7": {
+    "inputs": {
+      "model": [
+        "shift",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": [
+        "22:8",
+        0
+      ],
+      "denoise": 1.0
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "22:6": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "5": {
+    "inputs": {
+      "clip": [
+        "171:3",
+        0
+      ],
+      "vae": [
+        "171:2",
+        0
+      ],
+      "audio_vae": [
+        "171:1",
+        0
+      ],
+      "prompt": [
+        "22:11",
+        0
+      ],
+      "width": [
+        "22:9",
+        0
+      ],
+      "height": [
+        "22:9",
+        1
+      ],
+      "length": [
+        "22:24",
+        1
+      ],
+      "ref_image_size": "match"
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMaxH3ReferenceToVideo"
+    }
+  },
+  "125:17": {
+    "inputs": {
+      "noise_seed": 0
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "125:14": {
+    "inputs": {
+      "model": [
+        "shift",
+        0
+      ],
+      "conditioning": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "125:12": {
+    "inputs": {
+      "noise": [
+        "125:17",
+        0
+      ],
+      "guider": [
+        "125:14",
+        0
+      ],
+      "sampler": [
+        "22:6",
+        0
+      ],
+      "sigmas": [
+        "22:7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Sampler #1"
+    }
+  },
+  "242": {
+    "inputs": {
+      "av_latent": [
+        "125:12",
+        1
+      ]
+    },
+    "class_type": "LTXVSeparateAVLatent",
+    "_meta": {
+      "title": "LTXVSeparateAVLatent"
+    }
+  },
+  "243": {
+    "inputs": {
+      "latent": [
+        "242",
+        0
+      ],
+      "model_name": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      "mode": "megapixels",
+      "align": 32,
+      "keep_proportion": true,
+      "device": "cuda",
+      "precision": "fp16",
+      "mode.megapixels": 1.0
+    },
+    "class_type": "MinimaxH3LatentUpscaler3D",
+    "_meta": {
+      "title": "MinimaxH3LatentUpscaler3D"
+    }
+  },
+  "244": {
+    "inputs": {
+      "video_latent": [
+        "243",
+        0
+      ],
+      "audio_latent": [
+        "242",
+        1
+      ]
+    },
+    "class_type": "LTXVConcatAVLatent",
+    "_meta": {
+      "title": "LTXVConcatAVLatent"
+    }
+  },
+  "222": {
+    "inputs": {
+      "sigmas": "0.9035, 0.6316, 0.3158, 0.0000"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "3 step Sigmas"
+    }
+  },
+  "221": {
+    "inputs": {
+      "sigmas": "0.9035, 0.8000, 0.6316, 0.3158, 0.0000"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "4 step Sigmas"
+    }
+  },
+  "220": {
+    "inputs": {
+      "sigmas": "0.9231, 0.8780, 0.8000, 0.6316, 0.3158, 0.0000"
+    },
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "5 step Sigmas"
+    }
+  },
+  "135:30": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "135:27": {
+    "inputs": {
+      "noise_seed": 0
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "135:29": {
+    "inputs": {
+      "model": [
+        "shift",
+        0
+      ],
+      "conditioning": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "135:26": {
+    "inputs": {
+      "noise": [
+        "135:27",
+        0
+      ],
+      "guider": [
+        "135:29",
+        0
+      ],
+      "sampler": [
+        "135:30",
+        0
+      ],
+      "sigmas": [
+        "221",
+        0
+      ],
+      "latent_image": [
+        "244",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Upscale Pass"
+    }
+  },
+  "189": {
+    "inputs": {
+      "samples": [
+        "135:26",
+        0
+      ],
+      "vae": [
+        "171:2",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Final Decode"
+    }
+  },
+  "190": {
+    "inputs": {
+      "samples": [
+        "135:26",
+        0
+      ],
+      "vae": [
+        "171:1",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "Final Audio Decode"
+    }
+  },
+  "259": {
+    "inputs": {
+      "samples": [
+        "125:12",
+        1
+      ],
+      "vae": [
+        "171:2",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Single-pass Decode"
+    }
+  },
+  "258": {
+    "inputs": {
+      "samples": [
+        "125:12",
+        1
+      ],
+      "vae": [
+        "171:1",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "Single-pass Audio Decode"
+    }
+  },
+  "165": {
+    "inputs": {
+      "images": [
+        "189",
+        0
+      ],
+      "source_fps": 24.0,
+      "target_fps": 48.0,
+      "scale": 1,
+      "model_name": "flownet.pkl",
+      "batch_size": 8,
+      "use_fp16": true
+    },
+    "class_type": "RIFEInterpolation",
+    "_meta": {
+      "title": "RIFEInterpolation"
+    }
+  },
+  "34": {
+    "inputs": {
+      "frame_rate": 48,
+      "loop_count": 0,
+      "filename_prefix": "h3_seed_upscale/final",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 16,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "165",
+        0
+      ],
+      "audio": [
+        "190",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Final Video"
+    }
+  }
+}

@@ -32,6 +32,26 @@ namespace FlipPix.UI.Models
         /// <summary>False while the queue or another re-roll owns the GPU — the board's two re-roll buttons
         /// are the only things here that submit anything.</summary>
         bool CanStartBoardJob { get; }
+
+        /// <summary>
+        /// True while a sweep owns the GPU and a re-roll can be <i>parked</i> behind it rather than refused.
+        ///
+        /// <para>Re-wording a beat and pressing 🎲 is what you do while watching a hunt come in, and for as
+        /// long as the two re-roll buttons were gated on <see cref="CanStartBoardJob"/> alone that click hit
+        /// a greyed button: the edit was saved, the row said it was stale, and nothing anywhere said whether
+        /// the re-hunt had been asked for. The click now joins a queue drained when the sweep ends.</para>
+        /// </summary>
+        bool CanQueueBoardJob { get; }
+
+        /// <summary>
+        /// The side of a draft tile, in pixels — the board's zoom dial.
+        ///
+        /// <para>It comes through the host and out again on each draft rather than being read off the tab
+        /// with <c>ElementName</c>, for the reason written at the top of this file: a
+        /// <see cref="System.Windows.DataTemplate"/> has its own namescope, so an <c>ElementName</c> binding
+        /// from inside one resolves to nothing, silently. A tile sized that way is sized <c>NaN</c>.</para>
+        /// </summary>
+        double BoardTileSize { get; }
     }
 
     /// <summary>
@@ -55,7 +75,8 @@ namespace FlipPix.UI.Models
             PickCommand = new RelayCommand(() => _host.PickDraft(this),
                                            () => HasVideo && Clip.CanAct && !Clip.IsStale);
             RerollCommand = new RelayCommand(() => _host.RerollDraft(this),
-                                             () => Clip.CanAct && _host.CanStartBoardJob);
+                                             () => Clip.CanAct &&
+                                                   (_host.CanStartBoardJob || _host.CanQueueBoardJob));
             DeleteCommand = new RelayCommand(() => _host.DeleteDraft(this), () => HasVideo && Clip.CanAct);
         }
 
@@ -80,13 +101,14 @@ namespace FlipPix.UI.Models
         /// <summary>Local path of the draft video, or null when the slot is unfilled.</summary>
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(HasVideo))]
+        [NotifyPropertyChangedFor(nameof(TileTip))]
         private string? _videoPath;
 
         /// <summary>The noise seed this take was sampled on, or -1 when the slot is unfilled. What the finish
         /// pass writes back into the graph — never re-derived from the clip's base seed, because a single slot
         /// can be re-rolled on a seed of its own.</summary>
         [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(SeedText))]
+        [NotifyPropertyChangedFor(nameof(TileTip))]
         private long _seed = -1;
 
         /// <summary>First frame of the draft. Several simultaneous WPF <c>MediaElement</c>s render as solid
@@ -104,13 +126,52 @@ namespace FlipPix.UI.Models
         [ObservableProperty]
         private bool _isRendering;
 
-        /// <summary>Short line on and under the tile: the seed, "rendering…", or why the slot is empty.</summary>
+        /// <summary>
+        /// True when this take has been asked for again while a sweep held the GPU, and is waiting its turn.
+        ///
+        /// <para>The badge this raises is the point of the queue as much as the re-hunt is: a click that is
+        /// remembered but shows nothing is indistinguishable from a click that was swallowed.</para>
+        /// </summary>
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(TileTip))]
+        [NotifyPropertyChangedFor(nameof(RerollTip))]
+        private bool _isRerollQueued;
+
+        /// <summary>Short line shown on the tile while it has no thumbnail to show: "take 2",
+        /// "rendering…", or why the slot is empty.</summary>
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(TileTip))]
         private string _status = string.Empty;
 
         public bool HasVideo => !string.IsNullOrEmpty(VideoPath) && File.Exists(VideoPath);
 
-        public string SeedText => Seed >= 0 ? $"seed {Seed}" : string.Empty;
+        /// <summary>What the tile measures, both ways — the tiles are square. See
+        /// <see cref="IErosBoardHost.BoardTileSize"/> for why it arrives here rather than being bound
+        /// straight off the tab.</summary>
+        public double TileSize => _host.BoardTileSize;
+
+        /// <summary>
+        /// The tile's hover text — which take this is and what seed it was sampled on.
+        ///
+        /// <para>The seed used to be printed under every tile. Three of those per row, twelve rows deep, is a
+        /// wall of digits nobody reads and a third of the board's height; the seed of the take you have
+        /// actually chosen is on the player's caption instead, and the rest are here for when you want one.</para>
+        /// </summary>
+        public string TileTip => IsRerollQueued
+            ? $"Take {Slot} — queued, and re-hunted when the sweep that owns the GPU finishes."
+            : HasVideo
+                ? $"Take {Slot}" + (Seed >= 0 ? $" · seed {Seed}" : string.Empty)
+                  + "\nClick to watch it in the player and pick it for this clip."
+                : $"Take {Slot} — " + (string.IsNullOrEmpty(Status) ? "not hunted yet" : Status);
+
+        /// <summary>The 🎲 button's hover text, which has to say two different things: one for a click that
+        /// hunts now, one for a click that joins the queue.</summary>
+        public string RerollTip => IsRerollQueued
+            ? "This take is queued. It is re-hunted when the sweep that owns the GPU finishes.\n\n"
+              + "Click again to take it back out of the queue."
+            : "Hunts this one take again on a fresh seed and leaves the clip's other takes alone — a third "
+              + "of a hunt, not a whole one.\n\nWhile a sweep is running it waits its turn instead: the tile "
+              + "is badged and the re-hunt starts when the sweep ends.";
 
         public void Clear()
         {
@@ -125,6 +186,8 @@ namespace FlipPix.UI.Models
         public void RaiseState()
         {
             OnPropertyChanged(nameof(HasVideo));
+            OnPropertyChanged(nameof(TileTip));
+            OnPropertyChanged(nameof(TileSize));
             PickCommand.NotifyCanExecuteChanged();
             RerollCommand.NotifyCanExecuteChanged();
             DeleteCommand.NotifyCanExecuteChanged();
@@ -150,8 +213,10 @@ namespace FlipPix.UI.Models
                 Enumerable.Range(1, draftsPerClip).Select(slot => new ErosSeedDraft(this, slot, host)));
 
             RerollAllCommand = new RelayCommand(() => _host.RerollClip(this),
-                                                () => CanAct && _host.CanStartBoardJob);
+                                                () => CanAct &&
+                                                      (_host.CanStartBoardJob || _host.CanQueueBoardJob));
             PlayResultCommand = new RelayCommand(() => _host.PlayClipResult(this), () => OutputPath != null);
+            ToggleDescriptionCommand = new RelayCommand(() => IsDescriptionOpen = !IsDescriptionOpen);
         }
 
         /// <summary>The queue item this row renders. The board is a view of the queue, not a copy of it —
@@ -165,6 +230,11 @@ namespace FlipPix.UI.Models
 
         /// <summary>Plays this clip's finished video in the shared player.</summary>
         public RelayCommand PlayResultCommand { get; }
+
+        /// <summary>Opens or shuts just this row's prompt box. A command rather than a <c>ToggleButton</c>
+        /// bound to the flag: the board's buttons are all one style, and the styles in this app target
+        /// <c>Button</c>.</summary>
+        public RelayCommand ToggleDescriptionCommand { get; }
 
         /// <summary>"Clip 3 / 12", or "Single clip" for a standalone job.</summary>
         [ObservableProperty]
@@ -204,6 +274,13 @@ namespace FlipPix.UI.Models
         [NotifyPropertyChangedFor(nameof(CanAct))]
         private bool _isBusy;
 
+        /// <summary>True when this row — the whole clip, or one of its takes — is waiting in the re-roll
+        /// queue behind the sweep that currently owns the GPU.</summary>
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(RerollGlyph))]
+        [NotifyPropertyChangedFor(nameof(RerollTip))]
+        private bool _isRerollQueued;
+
         /// <summary>Slot of the picked draft, 0 = nothing picked yet.</summary>
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(HasPick))]
@@ -227,6 +304,33 @@ namespace FlipPix.UI.Models
 
         public bool HasPick => PickedSlot > 0;
 
+        /// <summary>
+        /// How many times this row's takes have been hunted, counting up. Not a statistic: it is how a
+        /// re-roll queued mid-sweep tells whether the sweep has already answered it — a clip re-worded
+        /// before the hunt reached it is rendered from the new wording by the sweep itself, and re-rolling
+        /// it afterwards would spend a second hunt on a prompt that has not changed since the first.
+        /// </summary>
+        public int HuntGeneration { get; set; }
+
+        /// <summary>⏳ while the re-hunt is waiting its turn, 🎲 otherwise — the button reports the state it
+        /// has just put the row into rather than staying the same picture whatever the click did.</summary>
+        public string RerollGlyph => IsRerollQueued ? "⏳" : "🎲";
+
+        /// <summary>The row 🎲 button's hover text; like the tile's, it says which of the two things a click
+        /// will do.</summary>
+        public string RerollTip => IsRerollQueued
+            ? "This clip is queued. It is re-hunted when the sweep that owns the GPU finishes.\n\n"
+              + "Click again to take it back out of the queue."
+            : "Throws this clip's takes away and hunts them again on a fresh base seed. The prompt, the cast "
+              + "and the canvas are unchanged — only the noise is.\n\nWhile a sweep is running it waits its "
+              + "turn instead: the row is marked queued and the re-hunt starts when the sweep ends.";
+
+        /// <summary>The side of this row's tiles, which is also how much height the row has to spend on the
+        /// clip's summary — the text beside the takes fills the band rather than stopping at two lines and
+        /// leaving the rest of it white. Same route as <see cref="ErosSeedDraft.TileSize"/>, for the same
+        /// namescope reason.</summary>
+        public double TileSize => _host.BoardTileSize;
+
         /// <summary>Any draft at all — a row with none is either unhunted or has had them all deleted.</summary>
         public bool HasDrafts => Drafts.Any(d => d.HasVideo);
 
@@ -243,6 +347,7 @@ namespace FlipPix.UI.Models
         public void RaiseState()
         {
             OnPropertyChanged(nameof(HasDrafts));
+            OnPropertyChanged(nameof(TileSize));
             OnPropertyChanged(nameof(HasPick));
             OnPropertyChanged(nameof(CanAct));
             RerollAllCommand.NotifyCanExecuteChanged();

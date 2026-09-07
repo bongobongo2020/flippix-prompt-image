@@ -131,6 +131,35 @@ namespace FlipPix.UI.ViewModels
         public H3ErosViewModel H3ErosVM { get; }
 
         /// <summary>
+        /// H3 4-Step ViewModel — the H3 Eros story flow on the author's 4-step SLA reference stack. It
+        /// hunts three drafts per clip and stops there: the take that is picked IS the clip, because on a
+        /// four-step checkpoint an upscale per clip costs more than the whole hunt. Every draft is written
+        /// with a .seed.json recipe for <see cref="SeedUpscaleVM"/> to render big later.
+        /// </summary>
+        public H34StepViewModel H34StepVM { get; }
+
+        /// <summary>
+        /// H3 VR ViewModel — the H3 Eros hunt with the VR180 SBS LoRA on top, so a cast's reference
+        /// photographs come back as a stereoscopic side-by-side pair a headset plays in 3D. The stereo is
+        /// composed by the model, not derived from a depth map afterwards as in <see cref="Vr180VM"/>.
+        /// </summary>
+        public H3VrViewModel H3VrVM { get; }
+
+        /// <summary>
+        /// H3 Batch ViewModel — a folder of story .txt files, each one put through the whole 🍀 pipeline
+        /// in turn: its own cast, sheets, clips, takes, upscale and join. The loop is the only thing this
+        /// adds; every step inside it is the one the buttons already run.
+        /// </summary>
+        public H3BatchViewModel H3BatchVM { get; }
+
+        /// <summary>
+        /// Seed Upscale ViewModel — scans a folder of drafts and their recipes, and re-renders only the
+        /// ticked ones: the recorded seed is sampled back through the same stack to reproduce its latent,
+        /// and that latent is what MinimaxH3LatentUpscaler3D lifts to the finished canvas.
+        /// </summary>
+        public SeedUpscaleViewModel SeedUpscaleVM { get; }
+
+        /// <summary>
         /// H3 Chain ViewModel - MiniMax H3 run as an autoregressive chain: two reference images and a
         /// soundtrack become one continuous take of arbitrary length, rendered as N segments inside a
         /// single ComfyUI submission where each segment continues out of the last frame of the one
@@ -309,6 +338,42 @@ namespace FlipPix.UI.ViewModels
                 _workflowCoordinator,
                 _fileDialogService);
 
+            H34StepVM = new H34StepViewModel(
+                comfyUIService,
+                lmStudioService,
+                logger,
+                settingsService,
+                serviceProvider,
+                _workflowCoordinator,
+                _fileDialogService);
+
+            H3VrVM = new H3VrViewModel(
+                comfyUIService,
+                lmStudioService,
+                logger,
+                settingsService,
+                serviceProvider,
+                _workflowCoordinator,
+                _fileDialogService);
+
+            H3BatchVM = new H3BatchViewModel(
+                comfyUIService,
+                lmStudioService,
+                logger,
+                settingsService,
+                serviceProvider,
+                _workflowCoordinator,
+                _fileDialogService);
+
+            SeedUpscaleVM = new SeedUpscaleViewModel(
+                comfyUIService,
+                lmStudioService,
+                logger,
+                settingsService,
+                serviceProvider,
+                _workflowCoordinator,
+                _fileDialogService);
+
             H3ChainVM = new H3ChainViewModel(
                 comfyUIService,
                 lmStudioService,
@@ -342,6 +407,10 @@ namespace FlipPix.UI.ViewModels
             H3DuoVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             H3ExperimentalVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             H3ErosVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
+            H34StepVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
+            H3VrVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
+            H3BatchVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
+            SeedUpscaleVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             H3ChainVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             H3MultiVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
 
@@ -360,6 +429,10 @@ namespace FlipPix.UI.ViewModels
             H3DuoVM.PropertyChanged += ForwardPropertyChanged;
             H3ExperimentalVM.PropertyChanged += ForwardPropertyChanged;
             H3ErosVM.PropertyChanged += ForwardPropertyChanged;
+            H34StepVM.PropertyChanged += ForwardPropertyChanged;
+            H3VrVM.PropertyChanged += ForwardPropertyChanged;
+            H3BatchVM.PropertyChanged += ForwardPropertyChanged;
+            SeedUpscaleVM.PropertyChanged += ForwardPropertyChanged;
             H3ChainVM.PropertyChanged += ForwardPropertyChanged;
             H3MultiVM.PropertyChanged += ForwardPropertyChanged;
 
@@ -653,6 +726,10 @@ namespace FlipPix.UI.ViewModels
                 H3DuoVM.PropertyChanged -= ForwardPropertyChanged;
                 H3ExperimentalVM.PropertyChanged -= ForwardPropertyChanged;
                 H3ErosVM.PropertyChanged -= ForwardPropertyChanged;
+                H34StepVM.PropertyChanged -= ForwardPropertyChanged;
+                H3VrVM.PropertyChanged -= ForwardPropertyChanged;
+                H3BatchVM.PropertyChanged -= ForwardPropertyChanged;
+                SeedUpscaleVM.PropertyChanged -= ForwardPropertyChanged;
                 H3ChainVM.PropertyChanged -= ForwardPropertyChanged;
                 H3MultiVM.PropertyChanged -= ForwardPropertyChanged;
 
@@ -670,6 +747,10 @@ namespace FlipPix.UI.ViewModels
                 (H3DuoVM as IDisposable)?.Dispose();
                 (H3ExperimentalVM as IDisposable)?.Dispose();
                 (H3ErosVM as IDisposable)?.Dispose();
+                (H34StepVM as IDisposable)?.Dispose();
+                (H3VrVM as IDisposable)?.Dispose();
+                (H3BatchVM as IDisposable)?.Dispose();
+                (SeedUpscaleVM as IDisposable)?.Dispose();
                 (H3ChainVM as IDisposable)?.Dispose();
                 (H3MultiVM as IDisposable)?.Dispose();
 

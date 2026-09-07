@@ -182,6 +182,30 @@ public class ComfyUISettings
     // dropdown gets. Persisted per user so a comparison run survives a restart.
     public string H3ErosDiffusionModel { get; set; } = string.Empty;
 
+    // H3 4-Step tab: the same dropdown, its own slot. Kept separate from H3ErosDiffusionModel because the
+    // two tabs render different graphs — Eros's twelve-step hybrid and the 4-step turbo checkpoint are not
+    // interchangeable, and sharing one field would have each tab silently reset the other's choice.
+    public string H34StepDiffusionModel { get; set; } = string.Empty;
+
+    // H3 VR tab: the same dropdown again, its own slot. The VR180 SBS LoRA sits on top of whichever
+    // checkpoint is chosen here, so the choice that reads best in a headset is not necessarily the one
+    // either of the other two tabs settled on.
+    public string H3VrDiffusionModel { get; set; } = string.Empty;
+
+    // Where already-built character sheets are kept, so loading a cast photo the app has seen before brings
+    // its sheet back instead of paying Qwen-Image-Edit for it again. Empty means the default,
+    // Pictures/flippix-images/faces-ai/cast/sheets — the folder they were already being filed into by hand.
+    public string CastSheetLibraryFolder { get; set; } = string.Empty;
+
+    // H3 Batch tab: the folder of story .txt files it walks, and its own diffusion-model slot. The folder
+    // is remembered because a batch folder is a place you come back to, often with two more files in it.
+    public string H3BatchFolder { get; set; } = string.Empty;
+    public string H3BatchDiffusionModel { get; set; } = string.Empty;
+
+    // Seed Upscale tab: the folder its scan starts in. Empty means "the H3 4-Step output folder", which is
+    // where the drafts it upscales are written.
+    public string SeedUpscaleFolder { get; set; } = string.Empty;
+
     // Painter (WAN 2.2 LightX2V) workflow model names — adjust to match your ComfyUI server
     public string PainterHighNoiseModel { get; set; } = @"wan\wan2.2_i2v_high_noise_14B_Q8_0.gguf";
     public string PainterLowNoiseModel { get; set; } = @"wan\wan2.2_i2v_low_noise_14B_Q8_0.gguf";

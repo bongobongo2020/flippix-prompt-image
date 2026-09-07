@@ -176,6 +176,22 @@ namespace FlipPix.UI.Models
         public int UpscaleSteps { get; set; } = 4;
 
         /// <summary>
+        /// 🥽 H3 VR only — the strength the VR180 SBS LoRA is applied at, frozen here at Add to Queue.
+        /// The finish re-samples the picked draft's branch, so hunting and finishing at different LoRA
+        /// strengths would produce a clip that is not the take that was picked. 1.0 is the model card's
+        /// own figure; 0 disables the LoRA and renders a flat clip in a wide frame.
+        /// </summary>
+        public double VrLoraStrength { get; set; } = 1.0;
+
+        /// <summary>
+        /// 🥽 H3 VR only — render this clip first-person, because its cast is one character. Frozen at Add
+        /// to Queue beside <see cref="VrLoraStrength"/>, and for the same reason: it changes the prompt, and
+        /// the finish re-samples the picked draft from the prompt. Meaningless when
+        /// <see cref="HasCharacter2"/> is true; the tab never sets it then.
+        /// </summary>
+        public bool SoloPov { get; set; }
+
+        /// <summary>
         /// 🌹 H3 Eros only — RIFE frame interpolation on the finished clip, 24 → 48 fps. On by default,
         /// which is how the authored graph runs.
         /// </summary>

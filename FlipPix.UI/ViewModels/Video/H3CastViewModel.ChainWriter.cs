@@ -49,6 +49,20 @@ namespace FlipPix.UI.ViewModels.Video
         protected const string ClipSystemPromptFile = "h3pw_clip.md";
 
         /// <summary>
+        /// Appended to the cast brief the story writer works from, and to the per-clip CAST line, but
+        /// <b>only when the cast is one character</b>. Empty everywhere but 🥽🎯 H3 VR, which turns a solo
+        /// cast into a first-person shot — see <see cref="H3VrViewModel.SoloCastDirective"/>.
+        ///
+        /// <para>It exists because "there is one character" is not, on its own, an instruction not to write
+        /// a second one. A story writer handed a scene with one named person will invent a partner for them
+        /// to act against, and the render then has no reference photograph for that partner and casts them
+        /// from whatever it likes. Both places are patched because they are asked at different times: the
+        /// brief shapes the beats, the CAST line shapes the prose written from each beat, and a beat that
+        /// already contains two people cannot be written out of one at clip level.</para>
+        /// </summary>
+        protected virtual string SoloCastDirective => string.Empty;
+
+        /// <summary>
         /// Writes the chain clip by clip and returns it stamped and joined — the same shape
         /// <c>ApplyReferenceLineToChain</c> produced from a single reply.
         /// </summary>
@@ -64,7 +78,7 @@ namespace FlipPix.UI.ViewModels.Video
                   "story introduces them, and keep that mapping identical in every beat: whoever strikes " +
                   "in beat 3 carries the same number in beat 9."
                 : $"There is one character: CHARACTER 1 (a {_character1.Noun}). Call them CHARACTER 1 and " +
-                  "nothing else — never by the name the story gives them.";
+                  "nothing else — never by the name the story gives them." + SoloCastDirective;
 
             var (setting, beats) = await StoryBeatSheet.WriteAsync(
                 _lmStudioService, model, StoryText, clipCount, len, castBrief,
@@ -159,7 +173,7 @@ namespace FlipPix.UI.ViewModels.Video
                   "below says which of them does what — keep the numbers exactly as it uses them, and name " +
                   "BOTH by their tags in this clip."
                 : "CAST — one reference photograph is attached to this clip. <Picture 1> is CHARACTER 1 " +
-                  $"(a {_character1.Noun}).";
+                  $"(a {_character1.Noun})." + SoloCastDirective;
 
             var wardrobe = HasCastWardrobe
                 ? "WARDROBE — already decided, not yours to choose. Each line opens 'Character N wears …'; " +
@@ -227,7 +241,7 @@ namespace FlipPix.UI.ViewModels.Video
         /// the opponent comes back as a duplicate of the tagged character, or as a stranger who changes
         /// between clips. Rejecting it here and asking again from the beat is far cheaper than the render.</para>
         /// </summary>
-        private string? ValidateCastClip(string body)
+        protected virtual string? ValidateCastClip(string body)
         {
             if (!body.Contains("integrated_multimodal_description:", StringComparison.OrdinalIgnoreCase))
                 return "it carried no integrated_multimodal_description to render. Reply with the three " +

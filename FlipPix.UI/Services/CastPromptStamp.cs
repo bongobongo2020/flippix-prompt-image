@@ -79,6 +79,50 @@ namespace FlipPix.UI.Services
             "and ignore any other clothing wording anywhere below; nobody changes, adds, removes or restyles a " +
             "garment unless this block says so:";
 
+        /// <summary>
+        /// The sentence that stops H3 rendering the reference sheet instead of the video: no studio
+        /// backdrop, no neutral pose, and — the part that does the work — no duplicate of one person and no
+        /// grid or split-screen layout. Several photographs of one person are a strong pull toward a frame
+        /// laid out like the sheet, and this is what resists it.
+        ///
+        /// <para>Held as a constant because <see cref="MakeStereo"/> has to find it again word for word in
+        /// an already-stamped prompt.</para>
+        /// </summary>
+        public const string SceneRule =
+            "These references are NOT the scene: never show the same person more than once in a frame, " +
+            "never line the cast up side by side against a plain backdrop, and do not copy the " +
+            "references' plain background, their neutral standing pose, or any panel, grid or " +
+            "split-screen layout into the video.";
+
+        /// <summary>
+        /// <see cref="SceneRule"/> for a tab whose output is a <b>stereoscopic side-by-side pair</b> —
+        /// 🥽🎯 H3 VR.
+        ///
+        /// <para><b>Why the ordinary rule cannot be used there.</b> A VR180 SBS frame <i>is</i> a
+        /// split-screen layout in which the same person appears twice, so <see cref="SceneRule"/> forbids
+        /// exactly what the LoRA is for. Sent together, the two instructions contradict each other, and the
+        /// only reading that satisfies both literally is the one the model actually took: split the frame,
+        /// and put a <b>different person in each half</b>. That is the "second character" a solo cast was
+        /// coming back with — not an invented partner standing beside her, but her other eye rendered as
+        /// somebody else.</para>
+        ///
+        /// <para>So this version keeps the two halves of the rule that still apply — no studio backdrop, no
+        /// neutral pose — and replaces the anti-duplication half with the duplication the format requires,
+        /// stated precisely enough to be a constraint rather than a licence: one person per half, the same
+        /// person in both, and no duplicate inside either half.</para>
+        /// </summary>
+        public const string StereoSceneRule =
+            "These references are NOT the scene: do not copy the references' plain background or their " +
+            "neutral standing pose into the video, and do not line the cast up against a plain backdrop " +
+            "the way the references do. This video's frame IS a stereoscopic side-by-side pair and must be " +
+            "split down the middle: the left half is the left eye's view and the right half is the right " +
+            "eye's view of ONE single scene at ONE single moment. Everyone in the scene therefore appears " +
+            "once in the left half and once in the right half, and the two are the SAME person — the same " +
+            "face, the same clothing, the same pose, the same position in the scene — differing only by a " +
+            "small horizontal parallax shift. Never put a different person, a different pose or a different " +
+            "moment in the two halves, and never show the same person twice inside one half. The frame is " +
+            "one scene seen by two eyes, never two scenes and never two casts.";
+
         /// <summary>The H3 field the body proper begins at, used to find where the preamble ends.</summary>
         private const string BodyAnchor = "integrated_multimodal_description:";
 
@@ -514,10 +558,7 @@ namespace FlipPix.UI.Services
 
             sb.Append($" Take ONLY {each} identity from {own} — face, facial features, hair, skin " +
                       $"and build — and keep {them} identical and unchanged from the first frame to the last. ");
-            sb.Append("These references are NOT the scene: never show the same person more than once in a frame, " +
-                      "never line the cast up side by side against a plain backdrop, and do not copy the " +
-                      "references' plain background, their neutral standing pose, or any panel, grid or " +
-                      "split-screen layout into the video. ");
+            sb.Append(SceneRule).Append(' ');
 
             // The clothing sentence is the one part of this line that depends on how the sheets were made —
             // see CastInfo.SheetsShowWardrobe.
@@ -531,6 +572,20 @@ namespace FlipPix.UI.Services
                   $"dress {them} strictly in the outfit written there, unchanged throughout.");
             return sb.ToString();
         }
+
+        /// <summary>
+        /// Swaps <see cref="SceneRule"/> for <see cref="StereoSceneRule"/> in an <b>already-stamped</b>
+        /// prompt. A no-op on a prompt that does not carry the rule, so it is safe to call on anything.
+        ///
+        /// <para>Done as a substitution at submit time rather than as another flag on
+        /// <see cref="CastInfo"/> deliberately: a flag would only reach prompts stamped after it existed,
+        /// and a queue full of clips already written and hunted would keep rendering the contradiction
+        /// until every one of them was re-queued. The rule is code-written and identical in every prompt in
+        /// the repository's history, so finding it by its own text is exact.</para>
+        /// </summary>
+        public static string MakeStereo(string? prompt) =>
+            string.IsNullOrEmpty(prompt) ? prompt ?? string.Empty
+                                         : prompt.Replace(SceneRule, StereoSceneRule, StringComparison.Ordinal);
 
         /// <summary>Names the pictures one character occupies, and insists they are one person.</summary>
         private static string DescribeCharacter(int character, int panels, string? sex)

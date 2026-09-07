@@ -51,6 +51,10 @@ namespace FlipPix.UI
             // MediaOpened/MediaFailed). Set an absolute Uri explicitly instead.
             _viewModel.ErosConvRotVM.PropertyChanged += ErosConvRotVM_PropertyChanged;
             _viewModel.H3ErosVM.PropertyChanged += H3ErosVM_PropertyChanged;
+            _viewModel.H34StepVM.PropertyChanged += H34StepVM_PropertyChanged;
+            _viewModel.H3VrVM.PropertyChanged += H3VrVM_PropertyChanged;
+            _viewModel.H3BatchVM.PropertyChanged += H3BatchVM_PropertyChanged;
+            _viewModel.SeedUpscaleVM.PropertyChanged += SeedUpscaleVM_PropertyChanged;
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
@@ -60,6 +64,10 @@ namespace FlipPix.UI
             ApplyScail2RefSource();
             ApplyErosConvRotSource();
             ApplyH3ErosSource();
+            ApplyH34StepSource();
+            ApplyH3VrSource();
+            ApplyH3BatchSource();
+            ApplySeedUpscaleSource();
         }
 
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -110,6 +118,18 @@ namespace FlipPix.UI
             {
                 H3ErosVideoPlayer.Position = System.TimeSpan.Zero;
                 H3ErosVideoPlayer.Play();
+            }
+
+            if (H3VrVideoPlayer != null && H3VrVideoPlayer.Source != null)
+            {
+                H3VrVideoPlayer.Position = System.TimeSpan.Zero;
+                H3VrVideoPlayer.Play();
+            }
+
+            if (H3BatchVideoPlayer != null && H3BatchVideoPlayer.Source != null)
+            {
+                H3BatchVideoPlayer.Position = System.TimeSpan.Zero;
+                H3BatchVideoPlayer.Play();
             }
 
             if (H3MultiVideoPlayer != null && H3MultiVideoPlayer.Source != null)
@@ -253,6 +273,123 @@ namespace FlipPix.UI
 
         private void H3ErosPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e) =>
             _viewModel.H3ErosVM.ReportPreviewFailed(e.ErrorException?.Message ?? "unknown media error");
+
+        // ────────────────────────────────────────────────────────────────────
+        // H3 4-Step and Seed Upscale — the same shared-player pattern as H3 Eros
+        // above, and for the same two reasons: an ABSOLUTE Uri set from code (a
+        // string {Binding} silently fails to open Z:\output paths), on an element
+        // that is never collapsed (a collapsed MediaElement will not open media).
+        // ────────────────────────────────────────────────────────────────────
+
+        private void H34StepVM_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ViewModels.Video.H3ErosViewModel.ActivePreviewUri)) return;
+            if (Dispatcher.CheckAccess()) ApplyH34StepSource();
+            else Dispatcher.Invoke(ApplyH34StepSource);
+        }
+
+        private void ApplyH34StepSource() =>
+            ApplySharedPlayerSource(H34StepVideoPlayer, _viewModel.H34StepVM.ActivePreviewUri);
+
+        private void H34StepPlayer_MediaOpened(object sender, RoutedEventArgs e) => H34StepVideoPlayer.Play();
+
+        private void H34StepPlayer_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            H34StepVideoPlayer.Position = System.TimeSpan.FromMilliseconds(1);
+            H34StepVideoPlayer.Play();
+        }
+
+        private void H34StepPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e) =>
+            _viewModel.H34StepVM.ReportPreviewFailed(e.ErrorException?.Message ?? "unknown media error");
+
+        private void H3VrVM_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ViewModels.Video.H3ErosViewModel.ActivePreviewUri)) return;
+            if (Dispatcher.CheckAccess()) ApplyH3VrSource();
+            else Dispatcher.Invoke(ApplyH3VrSource);
+        }
+
+        private void ApplyH3VrSource() =>
+            ApplySharedPlayerSource(H3VrVideoPlayer, _viewModel.H3VrVM.ActivePreviewUri);
+
+        private void H3VrPlayer_MediaOpened(object sender, RoutedEventArgs e) => H3VrVideoPlayer.Play();
+
+        private void H3VrPlayer_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            H3VrVideoPlayer.Position = System.TimeSpan.FromMilliseconds(1);
+            H3VrVideoPlayer.Play();
+        }
+
+        private void H3VrPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e) =>
+            _viewModel.H3VrVM.ReportPreviewFailed(e.ErrorException?.Message ?? "unknown media error");
+
+        private void H3BatchVM_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ViewModels.Video.H3ErosViewModel.ActivePreviewUri)) return;
+            if (Dispatcher.CheckAccess()) ApplyH3BatchSource();
+            else Dispatcher.Invoke(ApplyH3BatchSource);
+        }
+
+        private void ApplyH3BatchSource() =>
+            ApplySharedPlayerSource(H3BatchVideoPlayer, _viewModel.H3BatchVM.ActivePreviewUri);
+
+        private void H3BatchPlayer_MediaOpened(object sender, RoutedEventArgs e) => H3BatchVideoPlayer.Play();
+
+        private void H3BatchPlayer_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            H3BatchVideoPlayer.Position = System.TimeSpan.FromMilliseconds(1);
+            H3BatchVideoPlayer.Play();
+        }
+
+        private void H3BatchPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e) =>
+            _viewModel.H3BatchVM.ReportPreviewFailed(e.ErrorException?.Message ?? "unknown media error");
+
+        private void SeedUpscaleVM_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ViewModels.Video.SeedUpscaleViewModel.ActivePreviewUri)) return;
+            if (Dispatcher.CheckAccess()) ApplySeedUpscaleSource();
+            else Dispatcher.Invoke(ApplySeedUpscaleSource);
+        }
+
+        private void ApplySeedUpscaleSource() =>
+            ApplySharedPlayerSource(SeedUpscaleVideoPlayer, _viewModel.SeedUpscaleVM.ActivePreviewUri);
+
+        private void SeedUpscalePlayer_MediaOpened(object sender, RoutedEventArgs e) => SeedUpscaleVideoPlayer.Play();
+
+        private void SeedUpscalePlayer_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            SeedUpscaleVideoPlayer.Position = System.TimeSpan.FromMilliseconds(1);
+            SeedUpscaleVideoPlayer.Play();
+        }
+
+        private void SeedUpscalePlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e) =>
+            _viewModel.SeedUpscaleVM.ReportPreviewFailed(e.ErrorException?.Message ?? "unknown media error");
+
+        /// <summary>The body of ApplyH3ErosSource, shared by the two boards added after it. Clicking the
+        /// same tile twice replays it rather than doing nothing.</summary>
+        private static void ApplySharedPlayerSource(System.Windows.Controls.MediaElement? player, string? path)
+        {
+            if (player == null) return;
+            if (string.IsNullOrEmpty(path))
+            {
+                player.Stop();
+                player.Source = null;
+                return;
+            }
+
+            Uri target;
+            try { target = new Uri(System.IO.Path.GetFullPath(path), UriKind.Absolute); }
+            catch { target = new Uri(path, UriKind.RelativeOrAbsolute); }
+
+            if (string.Equals(player.Source?.OriginalString, target.OriginalString, StringComparison.OrdinalIgnoreCase))
+            {
+                player.Position = System.TimeSpan.Zero;
+                player.Play();
+                return;
+            }
+            player.Stop();
+            player.Source = target; // MediaOpened starts playback.
+        }
 
         // ──────────────────────────────────────────────────────────────────────
         // Scail 2 — same reference-player + trim-marker machinery as WAN SCAIL II,
@@ -557,6 +694,10 @@ namespace FlipPix.UI
             H3DuoVideoPlayer?.Stop();
             H3ExperimentalVideoPlayer?.Stop();
             H3ErosVideoPlayer?.Stop();
+            H34StepVideoPlayer?.Stop();
+            H3VrVideoPlayer?.Stop();
+            H3BatchVideoPlayer?.Stop();
+            SeedUpscaleVideoPlayer?.Stop();
             H3MultiVideoPlayer?.Stop();
         }
 

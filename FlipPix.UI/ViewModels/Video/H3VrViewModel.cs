@@ -68,6 +68,21 @@ namespace FlipPix.UI.ViewModels.Video
         private const string NodePowerLora = "21";
 
         /// <summary>
+        /// Whether this view model renders through the VR180 pipeline at all. Always true on the H3 VR tab
+        /// itself; overridden to a checkbox on 🗂️ H3 Batch, which can run the same folder of stories flat
+        /// (the ordinary Eros flow) or as VR. Every VR-specific member below — the prompt preamble, the
+        /// LoRA splice, the stereo scene rule, the 21:9 canvas, the per-eye wording — sits behind this one
+        /// flag, so "off" is not "the LoRA at strength 0" but the Eros path exactly, with nothing of this
+        /// class left in the graph or the prompt.
+        ///
+        /// <para>Read from the base constructor, where a derived override is not yet trustworthy: field
+        /// initialisers of the derived class have not run, so an override there sees its default value.
+        /// That is deliberate here — H3 Batch applies the VR canvas defaults itself, from its persisted
+        /// checkbox, after the base constructor has finished.</para>
+        /// </summary>
+        protected virtual bool VrPipelineActive => true;
+
+        /// <summary>
         /// The trigger and the stereo sentence, verbatim from the model card, in the position it asks for:
         /// the very start of the prompt.
         ///
@@ -108,8 +123,8 @@ namespace FlipPix.UI.ViewModels.Video
             "Where the scene implies somebody with them, that somebody IS the viewer and is never drawn. ";
 
         /// <summary>The LoRA's native canvas: 21:9 at 1.3 MP resolves to 1792×768, i.e. 768p ultrawide,
-        /// two 896×768 eyes.</summary>
-        private const double NativeMegapixels = 1.3;
+        /// two 896×768 eyes. Protected because 🗂️ H3 Batch switches to it when its VR checkbox goes on.</summary>
+        protected const double NativeMegapixels = 1.3;
 
         private double _vrLoraStrength = 1.0;
         private bool _soloPov = true;
@@ -125,16 +140,20 @@ namespace FlipPix.UI.ViewModels.Video
             : base(comfyUIService, lmStudioService, logger, settingsService, serviceProvider,
                    workflowCoordinator, fileDialogService)
         {
-            // The card's numbers, as defaults. The aspect in particular is not a preference: the LoRA
-            // packs two eyes into one frame, so a 16:9 or portrait canvas gives each eye half of a shape
-            // it was never trained to fill, and the split stops forming.
-            SelectedAspectRatio = "21:9 (Ultrawide)";
-            Megapixels = NativeMegapixels;
-            PreviewMegapixels = 0.3;
+            // The card's numbers, as defaults — on a tab that can only be VR. The aspect in particular is
+            // not a preference: the LoRA packs two eyes into one frame, so a 16:9 or portrait canvas gives
+            // each eye half of a shape it was never trained to fill, and the split stops forming. A derived
+            // class with the pipeline off (H3 Batch unticked) skips this and keeps the Eros canvas.
+            if (VrPipelineActive)
+            {
+                SelectedAspectRatio = "21:9 (Ultrawide)";
+                Megapixels = NativeMegapixels;
+                PreviewMegapixels = 0.3;
 
-            AddLog("H3 VR initialized — the H3 Eros hunt with the VR180 SBS LoRA on top. Three drafts " +
-                   "per clip at 21:9, you pick one, and the finish is a side-by-side stereo pair at " +
-                   "1792×768. Files land as ..._LR_180.mp4; a headset player reads the layout from that.");
+                AddLog("H3 VR initialized — the H3 Eros hunt with the VR180 SBS LoRA on top. Three drafts " +
+                       "per clip at 21:9, you pick one, and the finish is a side-by-side stereo pair at " +
+                       "1792×768. Files land as ..._LR_180.mp4; a headset player reads the layout from that.");
+            }
         }
 
         // ── Identity ────────────────────────────────────────────────────────────────────────────────
@@ -264,7 +283,7 @@ namespace FlipPix.UI.ViewModels.Video
         /// character". See <see cref="SoloPov"/> for why saying it here as well as in the render prompt is
         /// not belt-and-braces but the actual fix.
         /// </summary>
-        protected override string SoloCastDirective => SoloPovActive
+        protected override string SoloCastDirective => VrPipelineActive && SoloPovActive
             ? "\n\nPOINT OF VIEW — this video is shot first-person. The camera is the viewer's own eyes at " +
               "head height; it is never seen and it has no body. CHARACTER 1 is the ONLY person in the " +
               "video. Never write a second person of any kind — no partner, opponent, friend, stranger, " +
@@ -289,7 +308,7 @@ namespace FlipPix.UI.ViewModels.Video
         protected override string? ValidateCastClip(string body)
         {
             var stock = base.ValidateCastClip(body);
-            if (stock != null || !SoloPovActive) return stock;
+            if (stock != null || !VrPipelineActive || !SoloPovActive) return stock;
 
             return body.Contains("<Picture 2>", StringComparison.Ordinal)
                 ? "it named <Picture 2>, but this is a first-person clip with one character and there is no " +
@@ -308,6 +327,20 @@ namespace FlipPix.UI.ViewModels.Video
                     : $"h3-vr180-sbs-lora-v2 at {VrLoraStrength:0.00} — the model card's own runs are at 1.00.";
 
         /// <summary>
+        /// The VR finish list, held in a field because <see cref="MegapixelOptions"/> is now computed —
+        /// the pipeline can be switched off underneath it (H3 Batch's checkbox), and off means the plain
+        /// Eros list, not these.
+        /// </summary>
+        private static readonly MegapixelOption[] VrFinishOptions =
+        {
+            new MegapixelOption(0.5, "0.5 MP — fast (1120×480, 560px eyes)"),
+            new MegapixelOption(0.8, "0.8 MP — balanced (1408×608, 704px eyes)"),
+            new MegapixelOption(1.0, "1.0 MP — high (1568×672, 784px eyes)"),
+            new MegapixelOption(NativeMegapixels, "1.3 MP — 768p native (1792×768, 896px eyes)"),
+            new MegapixelOption(2.0, "2.0 MP — 2K ⚠ stereo not evaluated above native (2208×960)"),
+        };
+
+        /// <summary>
         /// The finished canvas, at 21:9 — the megapixel target handed to the 3D latent upscaler. Sizes are
         /// what <c>keep_proportion</c> + 32px alignment really produces at that aspect, and the per-eye
         /// figure is half the width, which is the number that decides whether the clip is worth a headset.
@@ -316,14 +349,19 @@ namespace FlipPix.UI.ViewModels.Video
         /// 768p only and says outright that 2K/4K upscales were not checked — and the failure mode of an
         /// upscaler that does not know it is holding a stereo pair is that it resolves each half
         /// independently and the parallax stops agreeing between them.</para>
+        ///
+        /// <para>With the pipeline off, the base list — the plain Eros one — is served instead, so a flat
+        /// batch shows flat sizes and is not offered "per eye" figures for frames that have none.</para>
         /// </summary>
-        public override IReadOnlyList<MegapixelOption> MegapixelOptions { get; } = new[]
+        public override IReadOnlyList<MegapixelOption> MegapixelOptions =>
+            VrPipelineActive ? VrFinishOptions : base.MegapixelOptions;
+
+        private static readonly MegapixelOption[] VrPreviewOptions =
         {
-            new MegapixelOption(0.5, "0.5 MP — fast (1120×480, 560px eyes)"),
-            new MegapixelOption(0.8, "0.8 MP — balanced (1408×608, 704px eyes)"),
-            new MegapixelOption(1.0, "1.0 MP — high (1568×672, 784px eyes)"),
-            new MegapixelOption(NativeMegapixels, "1.3 MP — 768p native (1792×768, 896px eyes)"),
-            new MegapixelOption(2.0, "2.0 MP — 2K ⚠ stereo not evaluated above native (2208×960)"),
+            new MegapixelOption(0.15, "0.15 MP — quickest (608×256, 304px eyes)"),
+            new MegapixelOption(0.2, "0.2 MP — quick (704×288, 352px eyes)"),
+            new MegapixelOption(0.3, "0.3 MP — default, the split is readable (864×352, 432px eyes)"),
+            new MegapixelOption(0.4, "0.4 MP — clearer (992×416, 496px eyes)"),
         };
 
         /// <summary>
@@ -335,23 +373,23 @@ namespace FlipPix.UI.ViewModels.Video
         /// at 304px an eye the halves are close enough to each other, and coarse enough in themselves,
         /// that a draft can read as flat when the finish will be stereo and vice versa. 0.3 is the cheapest
         /// canvas on which that call can actually be made.</para>
+        ///
+        /// <para>With the pipeline off, the base list is served instead — same reason as
+        /// <see cref="MegapixelOptions"/>.</para>
         /// </summary>
-        public override IReadOnlyList<MegapixelOption> PreviewMegapixelOptions { get; } = new[]
-        {
-            new MegapixelOption(0.15, "0.15 MP — quickest (608×256, 304px eyes)"),
-            new MegapixelOption(0.2, "0.2 MP — quick (704×288, 352px eyes)"),
-            new MegapixelOption(0.3, "0.3 MP — default, the split is readable (864×352, 432px eyes)"),
-            new MegapixelOption(0.4, "0.4 MP — clearer (992×416, 496px eyes)"),
-        };
+        public override IReadOnlyList<MegapixelOption> PreviewMegapixelOptions =>
+            VrPipelineActive ? VrPreviewOptions : base.PreviewMegapixelOptions;
 
         // ── The summaries, which have to talk about eyes ────────────────────────────────────────────
 
         /// <summary>Eros's line in per-frame terms. Here the number that matters is per <i>eye</i>: the
-        /// frame is a pair, so half its width is the resolution anything is actually seen at.</summary>
+        /// frame is a pair, so half its width is the resolution anything is actually seen at. With the
+        /// pipeline off it is Eros's own line again — per-frame, because the frame is one view again.</summary>
         public override string HuntSummary
         {
             get
             {
+                if (!VrPipelineActive) return base.HuntSummary;
                 var (dw, dh) = H3Canvas.Resolve(ResolvedAspectRatio, PreviewMegapixels, 32);
                 var (fw, fh) = H3Canvas.Resolve(ResolvedAspectRatio, Megapixels, 32);
                 var pick = AutoPickSample
@@ -376,6 +414,15 @@ namespace FlipPix.UI.ViewModels.Video
             JsonObject root, H3CastQueueItem item, IReadOnlyList<string> uploaded,
             string prompt, double lengthSeconds)
         {
+            // Pipeline off: the Eros graph, the Eros prompt, untouched. Nothing below this line runs —
+            // not the preamble, not the stereo rule, not the LoRA — so a flat batch clip is submitted
+            // exactly as H3 Eros would submit it.
+            if (!VrPipelineActive)
+            {
+                base.ApplyCommonInputs(root, item, uploaded, prompt, lengthSeconds);
+                return;
+            }
+
             // The item's own flag, not the checkbox's — it is the hunt that has to match the finish, and the
             // cast can have changed on screen since. A clip that was hunted first-person is finished
             // first-person.
@@ -436,9 +483,16 @@ namespace FlipPix.UI.ViewModels.Video
         // ── Queue ───────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The stock Eros queue-add, plus this tab's own dial frozen onto every item — see
-        /// <see cref="VrLoraStrength"/> for why the finish cannot be allowed to read it live.</summary>
+        /// <see cref="VrLoraStrength"/> for why the finish cannot be allowed to read it live. With the
+        /// pipeline off, it is the stock Eros queue-add and nothing else.</summary>
         protected override void AddToQueue()
         {
+            if (!VrPipelineActive)
+            {
+                base.AddToQueue();
+                return;
+            }
+
             var before = Queue.Count;
             base.AddToQueue();
             for (var i = before; i < Queue.Count; i++)
@@ -464,6 +518,9 @@ namespace FlipPix.UI.ViewModels.Video
         /// </summary>
         protected override void OnQueueItemLoaded(H3CastQueueItem item)
         {
+            // A stereo migration has no business rewriting a queue that was built flat.
+            if (!VrPipelineActive) return;
+
             var fixedPrompt = CastPromptStamp.MakeStereo(item.Prompt);
             if (fixedPrompt.Length == item.Prompt.Length) return;
 

@@ -202,6 +202,11 @@ public class ComfyUISettings
     public string H3BatchFolder { get; set; } = string.Empty;
     public string H3BatchDiffusionModel { get; set; } = string.Empty;
 
+    // H3 Batch tab: whether the batch renders every story through the H3 VR workflow (the VR180 SBS LoRA
+    // on top of the same Eros hunt) rather than as ordinary flat films. Persisted because a folder of
+    // stories is usually all one kind of film — once it is a VR folder it stays one.
+    public bool H3BatchRenderAsVr { get; set; }
+
     // Seed Upscale tab: the folder its scan starts in. Empty means "the H3 4-Step output folder", which is
     // where the drafts it upscales are written.
     public string SeedUpscaleFolder { get; set; } = string.Empty;

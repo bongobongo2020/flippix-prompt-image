@@ -27,6 +27,17 @@ namespace FlipPix.UI.ViewModels.Video
     /// the value of a batch is that a hundred stories go through the path that was already trusted for
     /// one, so a fix to that path is a fix to this tab too.</para>
     ///
+    /// <para><b>🥽 The VR checkbox.</b> <see cref="RenderAsVr"/> puts the whole 🥽🎯 H3 VR workflow under
+    /// the same loop instead: every story becomes a VR180 side-by-side stereo film, on the
+    /// <c>h3-vr180-sbs-lora</c> LoRA, with the 21:9 canvas, the solo-cast first-person rules and the
+    /// <c>_LR_180</c> file naming headset players read. That is why this class now sits under
+    /// <see cref="H3VrViewModel"/> rather than <see cref="H3ErosViewModel"/>: the VR pipeline is the
+    /// same Eros pipeline with one LoRA, one preamble and one canvas on top, and the checkbox simply
+    /// switches those in or out (<see cref="H3VrViewModel.VrPipelineActive"/>). Unticked, every story
+    /// runs the ordinary Eros workflow exactly as this tab always did — no preamble, no LoRA node, no
+    /// stereo rule, the flat canvas — because a gate that leaves anything behind is a flat film with
+    /// "VR" in its name.</para>
+    ///
     /// <para><b>Each story is a clean slate.</b> Between files the queue is emptied and the cast is torn
     /// down — both cards, their photos, their sheets, their Parts and the wardrobe with them — because a
     /// folder of stories is a folder of different stories, and the surest way to make the fourth film
@@ -38,9 +49,11 @@ namespace FlipPix.UI.ViewModels.Video
     /// <para><b>Naming.</b> A story's clips and its joined film are named after its file, not after a
     /// timestamp — <c>H3Batch_the-oasis_clip03.mp4</c>, <c>H3Batch_the-oasis_..._joined.mp4</c>. With a
     /// hundred films in one folder the timestamp is the least useful thing that could be in the name, and
-    /// <see cref="OutputFileStem"/> is read at exactly the two moments the current story is known.</para>
+    /// <see cref="OutputFileStem"/> is read at exactly the two moments the current story is known. In
+    /// VR mode the films carry the <c>_LR_180</c> suffix on top of that, so a headset player reads the
+    /// stereo layout from the file name.</para>
     /// </summary>
-    public class H3BatchViewModel : H3ErosViewModel
+    public class H3BatchViewModel : H3VrViewModel
     {
         /// <summary>What counts as a story. <c>.md</c> and <c>.text</c> are included for the same reason
         /// the 📄 Load .txt dialog accepts them.</summary>
@@ -54,6 +67,7 @@ namespace FlipPix.UI.ViewModels.Video
         private string _batchFolder = string.Empty;
         private bool _isBatchRunning;
         private string _batchStatus = string.Empty;
+        private bool _renderAsVr;
         private BatchStory? _current;
         private CancellationTokenSource? _batchCts;
 
@@ -78,6 +92,16 @@ namespace FlipPix.UI.ViewModels.Video
             OpenStoryFolderCommand = new RelayCommand(OpenStoryFolder, () => HasFolder);
 
             _batchFolder = _settingsService.Settings?.H3BatchFolder ?? string.Empty;
+            // The VR checkbox is read here, not in the base constructor, because the base cannot see it —
+            // its own gate ran before this class's fields existed (see H3VrViewModel.VrPipelineActive).
+            // True means the canvas defaults the VR constructor skipped have to be put on by hand.
+            _renderAsVr = _settingsService.Settings?.H3BatchRenderAsVr ?? false;
+            if (_renderAsVr)
+            {
+                SelectedAspectRatio = "21:9 (Ultrawide)";
+                Megapixels = NativeMegapixels;
+                PreviewMegapixels = 0.3;
+            }
             // The scan is disk work and this view model is built on the window's startup path, so it waits
             // for the dispatcher to be idle rather than running in the constructor — see the recurring
             // slow-open bug. Nothing on screen needs the list before then.
@@ -95,7 +119,11 @@ namespace FlipPix.UI.ViewModels.Video
             };
 
             AddLog("H3 Batch initialized — point it at a folder of story .txt files and press ▶ Run batch. " +
-                   "Each story gets its own cast, sheets, clips, takes and joined film, one after another.");
+                   "Each story gets its own cast, sheets, clips, takes and joined film, one after another." +
+                   (_renderAsVr
+                        ? "  🥽 VR is ON: every film is rendered through the H3 VR workflow as a VR180 " +
+                          "side-by-side stereo pair, named ..._LR_180.mp4."
+                        : string.Empty));
         }
 
         // ── Identity ────────────────────────────────────────────────────────────────────────────────
@@ -127,6 +155,14 @@ namespace FlipPix.UI.ViewModels.Video
 
         protected override void StoreDiffusionModel(ComfyUISettings settings, string name) =>
             settings.H3BatchDiffusionModel = name;
+
+        /// <summary>The batch's own VR gate — the checkbox, nothing else. See
+        /// <see cref="H3VrViewModel.VrPipelineActive"/> for everything that reads it.</summary>
+        protected override bool VrPipelineActive => RenderAsVr;
+
+        /// <summary>The headset players' stereo marker, on in VR mode only — a flat film named
+        /// <c>_LR_180</c> would be played as stereo it does not contain.</summary>
+        protected override string OutputFileSuffix => RenderAsVr ? "_LR_180" : string.Empty;
 
         /// <summary>A file name safe to build an output path from, and short enough to stay readable.</summary>
         private static string SafeName(string title)
@@ -205,6 +241,86 @@ namespace FlipPix.UI.ViewModels.Video
         public bool CanStartBatch =>
             !IsBatchRunning && !IsFeelingLucky && !IsProcessingQueue && !IsBuildingSheets &&
             _stories.Any(s => s.IsWaiting);
+
+        // ── The VR switch ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Whether the batch runs every story through the 🥽🎯 H3 VR workflow — the same Eros hunt with the
+        /// VR180 SBS LoRA, the stereo prompt rules and the 21:9 canvas — instead of the ordinary flat one.
+        /// This is the one flag <see cref="H3VrViewModel.VrPipelineActive"/> reads, so everything
+        /// VR-shaped on this tab hangs off it: the LoRA splice at submit time, the first-person rules for
+        /// a solo cast, the per-eye quality lists, and the <c>_LR_180</c> suffix on every file.
+        ///
+        /// <para><b>Unticked, it is the Eros workflow exactly as this tab always ran it.</b> Not "the VR
+        /// pipeline with the LoRA turned down" — the preamble, the stereo scene rule and the LoRA node are
+        /// simply not applied, and the canvas goes back to the flat defaults. There is no third mode.</para>
+        ///
+        /// <para>Persisted, and switched per batch rather than per story: a folder of stories is usually
+        /// all one kind of film. Changing it mid-run is refused (see <see cref="CanChangeVrMode"/>) — the
+        /// checkbox is read at Add to Queue like every other dial, but a run that changes its mind halfway
+        /// is a folder of films that do not match each other.</para>
+        /// </summary>
+        public bool RenderAsVr
+        {
+            get => _renderAsVr;
+            set
+            {
+                if (_renderAsVr == value) return;
+                _renderAsVr = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(RenderAsVrSummary));
+
+                // The canvas switches with the mode, to the mode's own defaults — the LoRA's 21:9 at
+                // native on, the flat Eros figures off — because a stereo pair on a 16:9 canvas does not
+                // split, and a flat film on an ultrawide one is just a flat film with black bars' worth
+                // of wasted width. The user can still change them afterwards; this is only the sensible
+                // starting point for the mode.
+                if (value)
+                {
+                    SelectedAspectRatio = "21:9 (Ultrawide)";
+                    Megapixels = NativeMegapixels;
+                    PreviewMegapixels = 0.3;
+                }
+                else
+                {
+                    SelectedAspectRatio = H3Canvas.AutoAspect;
+                    Megapixels = 1.0;
+                    PreviewMegapixels = 0.15;
+                }
+
+                // Everything computed off the gate has to be told it moved.
+                OnPropertyChanged(nameof(MegapixelOptions));
+                OnPropertyChanged(nameof(PreviewMegapixelOptions));
+                OnPropertyChanged(nameof(HuntSummary));
+                OnPropertyChanged(nameof(VrLoraSummary));
+                OnPropertyChanged(nameof(HasVrLoraWarning));
+                OnPropertyChanged(nameof(SoloPovSummary));
+
+                var settings = _settingsService.Settings;
+                if (settings != null)
+                {
+                    settings.H3BatchRenderAsVr = value;
+                    _settingsService.SaveSettings(settings);
+                }
+
+                AddLog(value
+                    ? "H3 Batch: 🥽 VR ON — every story in the folder will be rendered through the H3 VR " +
+                      "workflow as a VR180 stereo pair (21:9, LoRA on top, films named ..._LR_180.mp4)."
+                    : "H3 Batch: VR off — every story in the folder will be an ordinary flat film, as before.");
+            }
+        }
+
+        /// <summary>The line under the checkbox: what the next run will make, not what the last one made.</summary>
+        public string RenderAsVrSummary => RenderAsVr
+            ? "Every story becomes a VR180 side-by-side stereo film — the 🥽🎯 H3 VR workflow (the " +
+              "vr180-sbs LoRA, 21:9 canvas, first-person for a solo cast), on the same hunt/finish/join " +
+              "loop. Films are named ..._LR_180.mp4, which is what a headset player reads the layout from."
+            : "Every story becomes an ordinary flat film — the 🌹🎯 H3 Eros workflow, exactly as this tab " +
+              "has always run it.";
+
+        /// <summary>The checkbox is frozen while anything is rendering, so a folder cannot come out half
+        /// VR and half flat.</summary>
+        public bool CanChangeVrMode => !IsBatchRunning && !IsFeelingLucky && !IsProcessingQueue && !IsBuildingSheets;
 
         private async Task PickFolderAsync()
         {
@@ -325,7 +441,8 @@ namespace FlipPix.UI.ViewModels.Video
             try
             {
                 var todo = _stories.Where(s => s.IsWaiting).ToList();
-                AddLog($"=== 🗂️ H3 Batch: {todo.Count} story file(s) from {BatchFolder} ===");
+                AddLog($"=== 🗂️ H3 Batch{(RenderAsVr ? " · VR180" : string.Empty)}: " +
+                       $"{todo.Count} story file(s) from {BatchFolder} ===");
 
                 for (var i = 0; i < todo.Count; i++)
                 {
@@ -458,6 +575,7 @@ namespace FlipPix.UI.ViewModels.Video
             OnPropertyChanged(nameof(CanStartBatch));
             OnPropertyChanged(nameof(HasStories));
             OnPropertyChanged(nameof(FolderSummary));
+            OnPropertyChanged(nameof(CanChangeVrMode));
             StartBatchCommand.NotifyCanExecuteChanged();
             StopBatchCommand.NotifyCanExecuteChanged();
             ResetBatchCommand.NotifyCanExecuteChanged();

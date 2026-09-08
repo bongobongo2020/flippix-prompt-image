@@ -5866,6 +5866,11 @@
                          The H3 Eros rail below the batch panel is left in place on purpose: while the
                          run is going it shows the cast, wardrobe and board of the story in flight, so
                          an unattended batch is still something you can watch.
+
+                         The 🥽 checkbox in the batch panel runs the same loop through the H3 VR
+                         workflow instead - every film a VR180 side-by-side stereo pair on the
+                         vr180-sbs LoRA, 21:9 canvas, films named ..._LR_180.mp4. Unticked it is the
+                         ordinary flat Eros flow, exactly as before.
                          ══════════════════════════════════════════════════════════════════════ -->
 
                     <TabItem Header="🗂️ H3 Batch">
@@ -5978,12 +5983,79 @@
                                                     </ScrollViewer>
                                                 </Border>
 
+                                                <!-- ─── 🥽 The VR switch ─────────────────────────────
+                                                     Ticked, the whole batch runs the H3 VR workflow:
+                                                     the vr180-sbs LoRA spliced into the same Eros graph,
+                                                     a 21:9 canvas, first-person for a solo cast, and
+                                                     films named ..._LR_180.mp4. Unticked, nothing of
+                                                     that is applied — flat films, exactly as before.
+                                                     The dials under it are the VR tab's own two, and
+                                                     only exist while the checkbox is on. -->
+                                                <CheckBox Content="🥽 Render every film as VR180 stereo" IsChecked="{Binding RenderAsVr}"
+                                                          IsEnabled="{Binding CanChangeVrMode}"
+                                                          FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
+                                                          Foreground="{StaticResource TextPrimaryBrush}"
+                                                          ToolTip="Run the whole folder through the 🥽🎯 H3 VR workflow instead of the ordinary flat one: the VR180 side-by-side stereo LoRA on top of the same cast/sheets/hunt/join loop, a 21:9 canvas, first-person framing for a story with one character, and every finished film named ..._LR_180.mp4 — the naming DeoVR, Skybox and Pigasus read the stereo layout from.&#x0a;&#x0a;Unticked, it is the 🌹🎯 H3 Eros workflow exactly as this tab has always run it — no LoRA, no stereo rules, flat canvas, ordinary names. There is no in-between: the checkbox is refused while anything is rendering, so a folder cannot come out half VR and half flat."/>
+                                                <TextBlock Text="{Binding RenderAsVrSummary}"
+                                                           FontSize="10" Foreground="{StaticResource TextMutedBrush}" FontStyle="Italic"
+                                                           TextWrapping="Wrap" Margin="0,0,0,6"/>
+
+                                                <!-- The VR tab's two dials, only in VR mode. The aspect
+                                                     and quality dropdowns for it are the rail's own,
+                                                     further down, which switch their lists with the
+                                                     checkbox. -->
+                                                <StackPanel Visibility="{Binding RenderAsVr, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                            Margin="0,0,0,6">
+                                                    <Grid Margin="0,0,0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="VR180 stereo LoRA strength" VerticalAlignment="Center"
+                                                                   FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <Border Grid.Column="1" Background="{StaticResource SurfaceAltBrush}"
+                                                                CornerRadius="4" Padding="10,2">
+                                                            <TextBlock Text="{Binding VrLoraStrength, StringFormat={}{0:0.00}}"
+                                                                       FontFamily="Consolas" FontSize="13" FontWeight="Bold"
+                                                                       Foreground="{DynamicResource TabAccentBrush}"/>
+                                                        </Border>
+                                                    </Grid>
+                                                    <Slider Value="{Binding VrLoraStrength}"
+                                                            Minimum="0" Maximum="1.5"
+                                                            TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                                            SmallChange="0.05" LargeChange="0.25"
+                                                            Foreground="{DynamicResource TabAccentBrush}" Margin="0,0,0,2"
+                                                            ToolTip="How hard h3-vr180-sbs-lora-v2 is applied to every film in this batch. 1.00 is the model card's own figure and the default; below about 0.6 the two halves of the frame stop being two views and converge into one — fine on a monitor, worthless in a headset. Frozen onto each clip at Add to Queue, like every other dial."/>
+                                                    <TextBlock Text="{Binding VrLoraSummary}"
+                                                               FontSize="10" FontStyle="Italic"
+                                                               TextWrapping="Wrap" Margin="0,0,0,8">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding HasVrLoraWarning}" Value="True">
+                                                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <CheckBox Content="One character → first-person POV" IsChecked="{Binding SoloPov}"
+                                                              IsEnabled="{Binding IsSoloCast}"
+                                                              FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
+                                                              Foreground="{StaticResource TextPrimaryBrush}"
+                                                              ToolTip="In VR mode, a story whose cast is one character is shot first-person: the camera is the viewer, nobody else is ever in frame, and the story, the clips and the render prompt all say so. Without it a solo story comes back with a second, invented person in it — a different face every clip. Off gives a third-person solo film and lets the story write whoever it likes. Greyed out while two characters are loaded."/>
+                                                    <TextBlock Text="{Binding SoloPovSummary}"
+                                                               FontSize="10" Foreground="{StaticResource TextMutedBrush}" FontStyle="Italic"
+                                                               TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                                </StackPanel>
+
                                                 <Button Content="{Binding BatchButtonText}"
                                                         Command="{Binding StartBatchCommand}"
                                                         IsEnabled="{Binding CanStartBatch}"
                                                         Height="34" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"
                                                         Style="{StaticResource AccentButtonStyle}"
-                                                        ToolTip="Render every waiting story in the list, in order. Each one gets its own cast read out of it, its own Krea2-Spicy portraits, its own character sheets, its own clips, three takes per clip with the first taken, the upscale and the join.&#x0a;&#x0a;This is I'm Feeling Lucky in a loop - the same six steps, nothing batch-only. Between stories the queue is emptied and the cast is torn down, because a folder of stories is a folder of different stories; that also means every story pays for two portraits and two sheets of its own.&#x0a;&#x0a;One story failing does not stop the batch: its row says why and the run moves on. This holds the GPU for as long as the folder takes."/>
+                                                        ToolTip="Render every waiting story in the list, in order. Each one gets its own cast read out of it, its own Krea2-Spicy portraits, its own character sheets, its own clips, three takes per clip with the first taken, the upscale and the join.&#x0a;&#x0a;This is I'm Feeling Lucky in a loop - the same six steps, nothing batch-only. Between stories the queue is emptied and the cast is torn down, because a folder of stories is a folder of different stories; that also means every story pays for two portraits and two sheets of its own.&#x0a;&#x0a;With 🥽 Render every film as VR180 stereo ticked, the same loop runs the H3 VR workflow: the VR180 SBS LoRA on top of the same graph, a 21:9 canvas, first-person framing for a solo cast, and every film named ..._LR_180.mp4 for headset players.&#x0a;&#x0a;One story failing does not stop the batch: its row says why and the run moves on. This holds the GPU for as long as the folder takes."/>
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>

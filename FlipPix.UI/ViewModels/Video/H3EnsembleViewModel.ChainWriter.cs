@@ -54,13 +54,22 @@ namespace FlipPix.UI.ViewModels.Video
                 perBeatCast: LoadedCharacters.Count > 1,
                 imagePath: HasEnvironment ? EnvironmentPath : null,
                 log: AddLog,
-                token: token);
+                token: token,
+                continuity: true);
 
             if (beats.Count == 0)
             {
                 AddLog("WARNING: the story could not be divided into beats — nothing to write.");
                 return string.Empty;
             }
+
+            // One environment per clip — where it is, at what hour, in what light — with every gap the beat
+            // sheet left filled from the clip before it. H3 renders each clip as an independent job and has
+            // never seen the one before it, so anything left unsaid is re-decided per clip, which is a film
+            // that cuts from daylight to midnight and back. See StoryContinuity.
+            var environments = StoryContinuity.Plan(beats.Select(b => b.Env).ToList(), setting,
+                                                       beats.Select(b => b.Text).ToList());
+            foreach (var line in StoryContinuity.Describe(environments)) AddLog(line);
 
             ReportBeatCasting(beats);
 
@@ -69,16 +78,32 @@ namespace FlipPix.UI.ViewModels.Video
 
             var bodies = await ClipChainWriter.WriteAsync(
                 _lmStudioService, model, system, clipCount,
-                buildRequest: (i, reason) => BuildEnsembleClipRequest(setting, beats, i, clipCount, len, reason),
+                buildRequest: (i, reason) =>
+                    BuildEnsembleClipRequest(setting, beats, environments, i, clipCount, len, reason),
                 normalize: NormalizeClipBody,
-                validate: (i, body) => ValidateEnsembleClip(body, beats[i]),
+                validate: (i, body) => ValidateEnsembleClip(body, beats[i])
+                                       ?? StoryContinuity.Contradiction(body, EnvironmentFor(environments, i)),
                 onProgress: (n, total) => AnalyzePhase = $"Writing clip {n} of {total}…",
                 log: AddLog,
                 describe: b => $"{b.Length:N0} chars, {CountShots(b)} shots",
                 token: token);
 
-            return JoinClips(bodies);
+            // The environment written into each description in code, ahead of [Shot 1]: the writer was told
+            // the same thing in words, but only this is identical word for word in every clip that shares a
+            // place — and two wordings of one location are two locations to a model that renders them a job
+            // apart.
+            return JoinClips(bodies
+                .Select((b, i) => StoryContinuity.StampScene(b, EnvironmentFor(environments, i)))
+                .ToList());
         }
+
+        /// <summary>The environment clip <paramref name="index"/> was planned in, or an empty one when the
+        /// chain has no plan. Clamped: a clip that failed both its attempts shifts the ones after it up by
+        /// one, and that is a chain the writer has already warned is short.</summary>
+        private static StoryContinuity.Environment EnvironmentFor(
+            IReadOnlyList<StoryContinuity.Environment> plan, int index) =>
+            plan.Count == 0 ? default : plan[Math.Clamp(index, 0, plan.Count - 1)];
+
 
         /// <summary>How the cast is named to the beat sheet — by the same <c>&lt;Subject n&gt;</c> numbers the
         /// clips use, so the casting the sheet decides survives into them.</summary>
@@ -155,7 +180,8 @@ namespace FlipPix.UI.ViewModels.Video
         /// so it ends mid-action.
         /// </summary>
         private string BuildEnsembleClipRequest(
-            string setting, IReadOnlyList<StoryBeatSheet.StoryBeat> beats, int index, int clipCount,
+            string setting, IReadOnlyList<StoryBeatSheet.StoryBeat> beats,
+            IReadOnlyList<StoryContinuity.Environment> environments, int index, int clipCount,
             double seconds, string rejection)
         {
             var beat = beats[index];
@@ -163,9 +189,17 @@ namespace FlipPix.UI.ViewModels.Video
             var s = seconds.ToString("0.##", c);
 
             var location = HasEnvironment || setting.Length > 0
-                ? $"SETTING — the same in every clip of this chain; restate it in full inside [Shot 1]:\n" +
+                ? "SETTING — the same story world in every clip of this chain; restate it in full inside " +
+                  "[Shot 1]:\n" +
                   (setting.Length > 0 ? setting : "(read it off the location image)")
                 : "SETTING — read it off the beat below and restate it inside [Shot 1].";
+
+            // This clip's own place, hour and light — facts, not mood, and the half of the brief that may
+            // not move between clips.
+            var continuity = StoryContinuity.WriterBlock(
+                EnvironmentFor(environments, index),
+                index > 0 ? EnvironmentFor(environments, index - 1) : (StoryContinuity.Environment?)null);
+            if (continuity.Length > 0) location += "\n\n" + continuity;
 
             var last = index == clipCount - 1;
             var previous = index > 0

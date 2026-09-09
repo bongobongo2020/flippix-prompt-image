@@ -290,6 +290,14 @@ namespace FlipPix.UI.ViewModels.Video
                 ProcessingStatus = $"H3 Prompt Writer: dividing the story into {clipCount} beats...";
                 var (setting, beats) = await BuildBeatSheetAsync(model, clipCount, len, token);
 
+                // The continuity plan: one environment per clip, with every gap the beat sheet left filled
+                // from the clip before it. Built before a single clip is written, because it is what the
+                // clip requests are held to — and printed, because a move the story did not ask for is
+                // something to catch here rather than in the finished film.
+                var environments = StoryContinuity.Plan(beats.Select(b => b.Env).ToList(), setting,
+                                                       beats.Select(b => b.Text).ToList());
+                foreach (var line in StoryContinuity.Describe(environments)) AddLog(line);
+
                 // ── Step 2 — one call per clip ─────────────────────────────────────────────────────
                 var system = await ReadSystemPromptAsync(
                     ResearchPrompts ? H3ResearchPrompt.ClipSystemPromptFile : ClipSystemPromptFile, token);
@@ -302,9 +310,9 @@ namespace FlipPix.UI.ViewModels.Video
                 var clipBodies = await ClipChainWriter.WriteAsync(
                     _lmStudioService, model, system, clipCount,
                     buildRequest: (i, reason) =>
-                        BuildClipRequest(setting, beats, i, clipCount, len, shots, reason),
+                        BuildClipRequest(setting, beats, environments, i, clipCount, len, shots, reason),
                     normalize: NormalizeClipBody,
-                    validate: (_, body) => ValidateClip(body),
+                    validate: (i, body) => ValidateClip(body, EnvironmentFor(environments, i)),
                     onProgress: (n, total) =>
                         ProcessingStatus = $"H3 Prompt Writer: writing clip {n} of {total}...",
                     log: AddLog,
@@ -335,6 +343,11 @@ namespace FlipPix.UI.ViewModels.Video
                 bodies = bodies
                     .Select(b => NormalizeTimestamps(b, len))
                     .Select((b, i) => NormalizeShots(b, i + 1))
+                    // 6. The environment written into the description in code, ahead of [Shot 1]. The
+                    //    writer was told the same thing in words, but only this is identical word for word
+                    //    in every clip that shares a place — and two wordings of one alley are two alleys
+                    //    to a model that renders them a job apart.
+                    .Select((b, i) => StoryContinuity.StampScene(b, EnvironmentFor(environments, i)))
                     .ToList();
 
                 var cleaned = JoinClips(bodies
@@ -541,7 +554,12 @@ namespace FlipPix.UI.ViewModels.Video
                 // carries a multi-stage locomotion change tears the motion latent (Rule 35 / C2V §4.4), and
                 // a beat that carries three narrative moments comes back rushed (Rule 44). Null with the
                 // switch off, so the shared beat sheet is byte-for-byte what every other tab sends.
-                extraRules: ResearchPrompts ? H3ResearchPrompt.BeatSheetRules : null);
+                extraRules: ResearchPrompts ? H3ResearchPrompt.BeatSheetRules : null,
+                // Where every clip is, at what hour, in what light — decided once here for the whole
+                // chain. H3 renders each clip as an independent job and has never seen the one before it,
+                // so anything the plan leaves open is re-invented per clip, which is where a film that
+                // cuts from midday to midnight and back comes from. See StoryContinuity.
+                continuity: true);
         }
 
         // ── Step 2: one call per clip ──────────────────────────────────────────────────────────────
@@ -554,11 +572,12 @@ namespace FlipPix.UI.ViewModels.Video
             CanonicalizeFieldLabels(base.NormalizeClipBody(raw));
 
         /// <summary>
-        /// What makes a clip renderable here: the description H3 renders from, and — in a two-hander —
-        /// both fighters named by their tags. A fighter left as an untagged pronoun renders as a duplicate
-        /// of the tagged one, which is the failure this tab exists to avoid.
+        /// What makes a clip renderable here: the description H3 renders from, — in a two-hander — both
+        /// fighters named by their tags, and a scene whose light does not contradict the hour the chain is
+        /// being told in. A fighter left as an untagged pronoun renders as a duplicate of the tagged one,
+        /// which is the failure this tab exists to avoid.
         /// </summary>
-        private string? ValidateClip(string body)
+        private string? ValidateClip(string body, StoryContinuity.Environment environment)
         {
             if (!HasFieldContent(body, ClipFieldLabels[0]))
                 return "it carried no integrated_multimodal_description to render. Reply with the three " +
@@ -569,7 +588,10 @@ namespace FlipPix.UI.ViewModels.Video
                        "appears as <Picture 1> or <Picture 2> — at their first appearance and wherever they " +
                        "are struck, grabbed, named or reacted to. Write it again.";
 
-            return null;
+            // The hour is the one continuity failure worth a whole rewrite: a clip written in sunlight
+            // inside a story that has been dark since beat 4 renders as a cut to another day, and no
+            // downstream pass can repair prose that describes the wrong light.
+            return StoryContinuity.Contradiction(body, environment);
         }
 
         /// <summary>
@@ -581,10 +603,14 @@ namespace FlipPix.UI.ViewModels.Video
         /// whole chain, and a model handed the whole story writes a little of all of it into every clip.</para>
         /// </summary>
         private string BuildClipRequest(
-            string setting, IReadOnlyList<StoryBeatSheet.StoryBeat> beats, int index, int clipCount,
+            string setting, IReadOnlyList<StoryBeatSheet.StoryBeat> beats,
+            IReadOnlyList<StoryContinuity.Environment> environments, int index, int clipCount,
             double seconds, int shots, string rejection)
         {
             var beat = beats[index];
+            var environment = EnvironmentFor(environments, index);
+            var previousEnvironment = index > 0 ? EnvironmentFor(environments, index - 1)
+                                                : (StoryContinuity.Environment?)null;
 
             var cast = HasCharacter2
                 ? "CAST — two reference photographs are attached to this clip. <Picture 1> is CHARACTER 1 " +
@@ -603,9 +629,16 @@ namespace FlipPix.UI.ViewModels.Video
                 : "WARDROBE — none was decided. Read the outfits off the setting, write them out once in full " +
                   "when each character first appears, and keep that wording for the rest of the clip.";
 
+            // The setting sentence is the chain's mood and place in prose; the continuity block under it
+            // is this clip's own place, hour and light as facts. Both are sent: the first is what the scene
+            // is, the second is what may not move between clips — and it is the second that stops a film
+            // cutting from midday to midnight for no reason (see StoryContinuity).
             var location = setting.Length > 0
-                ? $"SETTING — the same in every clip of this chain, restated inside [Shot 1]:\n{setting}"
+                ? $"SETTING — the same story world in every clip of this chain, restated inside [Shot 1]:\n{setting}"
                 : "SETTING — read it off the beat below, and restate it inside [Shot 1].";
+
+            var continuity = StoryContinuity.WriterBlock(environment, previousEnvironment);
+            if (continuity.Length > 0) location += "\n\n" + continuity;
 
             var previous = index > 0
                 ? "THE CLIP BEFORE THIS ONE has already been rendered and showed this — do NOT show it " +
@@ -627,7 +660,8 @@ namespace FlipPix.UI.ViewModels.Video
             // cast and the wardrobe it refers to, and ahead of the action it constrains. Every rule in
             // it is cited to the guides in prompts/documents/ — see H3ResearchPrompt.
             var research = ResearchPrompts
-                ? H3ResearchPrompt.RulesFor(index, HasCharacter2, seconds, shots, setting) + "\n\n"
+                ? H3ResearchPrompt.RulesFor(index, HasCharacter2, seconds, shots, setting,
+                                            hasContinuityPlan: !environment.IsEmpty) + "\n\n"
                 : string.Empty;
 
             // The shot line is the one piece of the fixed context the two builds word differently: the

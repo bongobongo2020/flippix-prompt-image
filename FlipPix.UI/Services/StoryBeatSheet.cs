@@ -26,6 +26,19 @@ namespace FlipPix.UI.Services
     /// <para>Nothing here can fail a run. A reply with the wrong number of beats is asked for once more and
     /// then fitted to the plan by <see cref="Fit"/>; a reply with no beats at all falls back to the story's
     /// own units (<see cref="FromStory"/>).</para>
+    ///
+    /// <para><b>The retry closes the scratchpad</b> (observed 2026-09-09, Qwen3.6-35B on the user's own
+    /// server). <see cref="LlmSampling.StoryChainBrief"/> is the app's one profile that lets a model think
+    /// before it answers, on the reasoning that dividing a story is a planning task. On a model that routes
+    /// its thinking into <c>reasoning_content</c>, that scratchpad is spent from the same token budget as
+    /// the answer — and a 12-clip beat sheet's budget is ~2.5k tokens, which this model spent entirely on
+    /// thinking. Both attempts returned an empty <c>content</c>, so every story of a ten-film overnight
+    /// batch fell through to <see cref="FromStory"/>: no beats, and no SETTING line for the clips to be
+    /// held to. The films that came out of it cut between daylight and midnight clip by clip, because
+    /// nothing downstream had ever been told what hour it was. With <c>enable_thinking=false</c> the same
+    /// model answered the same prompt in 6 seconds and 349 tokens — so the first attempt is left exactly as
+    /// it was, and the retry, which used to be the identical request sent twice, is now the one thing that
+    /// can actually make a difference.</para>
     /// </summary>
     public static class StoryBeatSheet
     {
@@ -43,7 +56,11 @@ namespace FlipPix.UI.Services
         /// when the caller did not ask for per-beat casting. Only the ensemble tabs use it: a clip there is
         /// sent only the reference sheets of the subjects it names, so which subjects are in which beat is
         /// a casting decision that has to be made before the clips are written.</param>
-        public readonly record struct StoryBeat(string Text, int Part, int PartCount, string Cast = "")
+        /// <param name="Env">The environment the beat ended with — <c>EXT | the alley | night | heavy
+        /// rain</c> — or empty when the caller did not ask for a continuity plan, or the model did not
+        /// write one for this beat. Read by <see cref="StoryContinuity"/>, which fills the gaps.</param>
+        public readonly record struct StoryBeat(string Text, int Part, int PartCount, string Cast = "",
+                                                string Env = "")
         {
             /// <summary>The cast tags as numbers, or empty when the beat named none.</summary>
             public IReadOnlyList<int> CastIndices => string.IsNullOrWhiteSpace(Cast)
@@ -102,6 +119,10 @@ namespace FlipPix.UI.Services
         /// <param name="extraRules">Optional rules appended to the user message, for a caller whose clips
         /// cannot render just any division of a story. Null for every caller that has no such constraint,
         /// so the shared beat sheet is what it always was unless someone asks otherwise.</param>
+        /// <param name="continuity">When set, every beat is asked to end with the environment it happens in
+        /// — <c>[EXT | the alley | night | heavy rain]</c> — so the chain has a plan for place, hour and
+        /// light rather than a per-clip guess at them. Off by default: a caller that does not read
+        /// <see cref="StoryBeat.Env"/> would only be paying for a longer reply.</param>
         public static async Task<(string Setting, List<StoryBeat> Beats)> WriteAsync(
             LMStudioService lm,
             string model,
@@ -113,28 +134,35 @@ namespace FlipPix.UI.Services
             string? imagePath,
             Action<string> log,
             CancellationToken token,
-            string? extraRules = null)
+            string? extraRules = null,
+            bool continuity = false)
         {
-            var system = BuildSystem(perBeatCast);
-            var user = BuildUser(story, clipCount, seconds, castBrief, perBeatCast, extraRules);
+            var system = BuildSystem(perBeatCast, continuity);
+            var user = BuildUser(story, clipCount, seconds, castBrief, perBeatCast, extraRules, continuity);
             var maxTokens = Math.Min(8000, 800 + 140 * clipCount);
 
             var setting = string.Empty;
-            var beats = new List<(string Text, string Cast)>();
+            var beats = new List<(string Text, string Cast, string Env)>();
 
             for (var attempt = 1; attempt <= 2; attempt++)
             {
                 token.ThrowIfCancellationRequested();
 
+                // The second attempt closes the scratchpad — see "The retry closes the scratchpad" in the
+                // class remarks. Asking the same way twice fails the same way twice.
+                var sampling = attempt == 1
+                    ? LlmSampling.StoryChainBrief
+                    : LlmSampling.StoryChainBrief with { AllowThinking = false };
+
                 var raw = !string.IsNullOrWhiteSpace(imagePath) && attempt == 1
                     ? await lm.AnalyzeImageWithSystemPromptAsync(
                         model, imagePath!, user, system,
                         maxTokens: maxTokens, cancellationToken: token,
-                        sampling: LlmSampling.StoryChainBrief)
+                        sampling: sampling)
                     : await lm.SendTextChatAsync(
                         model, system, user,
                         maxTokens: maxTokens, cancellationToken: token,
-                        sampling: LlmSampling.StoryChainBrief);
+                        sampling: sampling);
 
                 var parsed = Parse(raw);
                 if (parsed.Beats.Count > beats.Count)
@@ -146,13 +174,21 @@ namespace FlipPix.UI.Services
                 if (beats.Count == clipCount) break;
 
                 if (attempt == 1)
-                    log($"Beat sheet: {beats.Count} beat(s) came back for {clipCount} clips — asking once more...");
+                    log(beats.Count == 0
+                        ? "Beat sheet: the model returned nothing — on a reasoning model that means the " +
+                          "whole token budget went into its scratchpad. Asking again with the scratchpad " +
+                          "closed."
+                        : $"Beat sheet: {beats.Count} beat(s) came back for {clipCount} clips — asking " +
+                          "once more...");
             }
 
             if (beats.Count == 0)
             {
-                log("WARNING: the beat sheet came back empty — dividing the story by its own lines instead. " +
-                    "The clips will follow the prose literally.");
+                log("WARNING: the beat sheet came back empty, twice — dividing the story by its own lines " +
+                    "instead. The clips will follow the prose literally, and with no SETTING and no " +
+                    "continuity plan behind them each clip decides its own place, hour and light: that is " +
+                    "what a film that cuts from daylight to midnight and back is made of. Try a shorter " +
+                    "story, or a model that answers rather than reasons.");
                 return (setting, FromStory(story, clipCount));
             }
 
@@ -166,6 +202,17 @@ namespace FlipPix.UI.Services
             else
                 log($"Beat sheet: {beats.Count} beats for {clipCount} clips — adjacent beats merged so the " +
                     "story still ends in the last clip.");
+
+            if (continuity)
+            {
+                var written = beats.Count(b => b.Env.Length > 0);
+                if (written == 0)
+                    log("Beat sheet: no beat carried an environment — the whole chain will be held to the " +
+                        "SETTING line instead, which is the next best thing to a plan.");
+                else if (written < beats.Count)
+                    log($"Beat sheet: {written} of {beats.Count} beats carried an environment; the rest " +
+                        "inherit the beat before them.");
+            }
 
             if (setting.Length > 0)
                 log($"Setting: {setting}");
@@ -182,20 +229,27 @@ namespace FlipPix.UI.Services
 
         /// <summary>The beat sheet's system prompt. Deliberately not about H3 at all: the job is a division
         /// of a story, and a model told to think about video formats starts writing one.</summary>
-        public static string BuildSystem(bool perBeatCast)
+        public static string BuildSystem(bool perBeatCast, bool continuity = false)
         {
+            // The environment suffix, shown in the shape and then explained. It rides on the beat line
+            // rather than arriving as a second numbered list because a second list is a second thing to
+            // keep aligned — and an environment that lines up with the wrong beat is worse than none.
+            var envExample = continuity
+                ? "  [EXT | the alley behind the club | night | heavy rain, neon signs]"
+                : string.Empty;
+
             var castLine = perBeatCast
                 ? "SETTING: <one sentence — place, time of day, weather, light, mood>\n" +
-                  "1. [S1, S2] <what happens in beat 1>\n" +
-                  "2. [S3] <what happens in beat 2>\n" +
+                  "1. [S1, S2] <what happens in beat 1>" + envExample + "\n" +
+                  "2. [S3] <what happens in beat 2>" + envExample + "\n" +
                   "(one numbered line per beat, through to the last)\n\n" +
                   "Each beat opens with the tags of the characters who are IN it, in square brackets. Only " +
                   "those characters appear in that beat; a character who is not in the brackets is not on " +
                   "screen. Keep it to two or three characters per beat, give every character at least one " +
                   "beat, and prefer runs of consecutive beats for a character over scattered single ones.\n\n"
                 : "SETTING: <one sentence — place, time of day, weather, light, mood>\n" +
-                  "1. <what happens in beat 1>\n" +
-                  "2. <what happens in beat 2>\n" +
+                  "1. <what happens in beat 1>" + envExample + "\n" +
+                  "2. <what happens in beat 2>" + envExample + "\n" +
                   "(one numbered line per beat, through to the last)\n\n";
 
             return
@@ -214,13 +268,39 @@ namespace FlipPix.UI.Services
                 "its moments finer — one blow becomes the wind-up, the contact and the recoil — never add " +
                 "new ones.\n" +
                 "- Every beat names who acts and who it lands on, by the tags you were given.\n" +
-                "- One or two sentences per beat. No camera work, no lighting, no style adjectives.";
+                "- One or two sentences per beat. No camera work, no lighting, no style adjectives." +
+                (continuity ? ContinuityRules : string.Empty);
         }
+
+        /// <summary>
+        /// What the model is told about the environment suffix, appended to the system rules.
+        ///
+        /// <para>Every line of it is a way a chain went wrong before it existed. The closed list of hours is
+        /// there because "late evening", "after dark" and "night-time" cannot be compared with each other;
+        /// the forward-only rule because a story that had been dark since beat 4 came back to the afternoon
+        /// in beat 9; the same-words rule because one alley described two ways is two alleys once the clips
+        /// are rendered a job apart; and the "only when the story moves them" rule because a model will
+        /// otherwise vary the environment for the reason a writer varies a word — to avoid repeating
+        /// itself.</para>
+        /// </summary>
+        private const string ContinuityRules =
+            "\n- End EVERY beat with the environment it happens in, in square brackets, in exactly this " +
+            "shape: [EXT | <the place> | <time of day> | <weather and light>]. INT for indoors, EXT for " +
+            "outdoors.\n" +
+            "- The time of day is ONE of: dawn, morning, midday, afternoon, evening, dusk, night, late " +
+            "night. Use no other words for it.\n" +
+            "- The environment is the SAME in consecutive beats unless the story physically moves the " +
+            "characters somewhere else, or says that time passes. Copy the previous beat's bracket exactly " +
+            "when nothing has moved: the same place written two different ways is read as two places.\n" +
+            "- Time only ever moves FORWARD through that list, and only as far as the story takes it. A " +
+            "story told in one evening is 'evening' in every beat.\n" +
+            "- Invent no location the story does not contain. Where it never says whether a scene is " +
+            "indoors or out, or what hour it is, choose once in beat 1 and keep that choice.";
 
         /// <summary>The beat sheet's user message.</summary>
         public static string BuildUser(
             string story, int clipCount, double seconds, string castBrief, bool perBeatCast,
-            string? extraRules = null)
+            string? extraRules = null, bool continuity = false)
         {
             var c = CultureInfo.InvariantCulture;
             var s = seconds.ToString("0.##", c);
@@ -237,6 +317,10 @@ namespace FlipPix.UI.Services
                 (perBeatCast
                     ? "Open every beat with the tags of the characters in it, in square brackets.\n"
                     : string.Empty) +
+                (continuity
+                    ? "End every beat with its environment in square brackets: " +
+                      "[EXT | the place | time of day | weather and light].\n"
+                    : string.Empty) +
                 (string.IsNullOrWhiteSpace(extraRules) ? string.Empty : "\n" + extraRules.Trim() + "\n") +
                 "\n" + storyBlock;
         }
@@ -248,9 +332,9 @@ namespace FlipPix.UI.Services
         /// <summary>Reads a beat-sheet reply into its setting line and its beats, in the order written.
         /// Anything that is neither is discarded, so a model that opens with "Here is the beat sheet:" costs
         /// nothing.</summary>
-        public static (string Setting, List<(string Text, string Cast)> Beats) Parse(string? reply)
+        public static (string Setting, List<(string Text, string Cast, string Env)> Beats) Parse(string? reply)
         {
-            var beats = new List<(string Text, string Cast)>();
+            var beats = new List<(string Text, string Cast, string Env)>();
             if (string.IsNullOrWhiteSpace(reply)) return (string.Empty, beats);
 
             var text = reply.Replace("\r\n", "\n").Replace('\r', '\n');
@@ -270,7 +354,11 @@ namespace FlipPix.UI.Services
                     body = body[prefix.Length..].Trim();
                 }
 
-                if (body.Length >= MinBeatLength) beats.Add((body, cast));
+                // The environment suffix comes off here, not downstream: it is the beat sheet's own
+                // notation, and every pass after this one treats a beat as the sentence it renders.
+                var (beatText, env) = StoryContinuity.SplitBeat(body);
+
+                if (beatText.Length >= MinBeatLength) beats.Add((beatText, cast, env));
             }
 
             return (setting, beats);
@@ -284,7 +372,7 @@ namespace FlipPix.UI.Services
         /// chain. More beats than clips: adjacent beats are merged, so the story's last beat still lands in
         /// the last clip. Equal counts pass through one to one.</para>
         /// </summary>
-        public static List<StoryBeat> Fit(List<(string Text, string Cast)> beats, int clipCount)
+        public static List<StoryBeat> Fit(List<(string Text, string Cast, string Env)> beats, int clipCount)
         {
             var fitted = new List<StoryBeat>(Math.Max(0, clipCount));
             if (beats.Count == 0 || clipCount <= 0) return fitted;
@@ -300,11 +388,14 @@ namespace FlipPix.UI.Services
                     to = Math.Min(to, beats.Count);
 
                     var span = beats.GetRange(from, to - from);
+                    // Merged beats keep the FIRST environment they carried: a clip that opens in one place
+                    // and is told it is in another halfway through is exactly the cut being prevented.
+                    var env = span.Select(b => b.Env).FirstOrDefault(e => e.Length > 0) ?? string.Empty;
                     // The merged clip is cast from the union of what its beats named, in first-seen order.
                     var cast = string.Join(", ", span
                         .SelectMany(b => b.Cast.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                         .Distinct());
-                    fitted.Add(new StoryBeat(string.Join(" Then ", span.Select(b => b.Text)), 1, 1, cast));
+                    fitted.Add(new StoryBeat(string.Join(" Then ", span.Select(b => b.Text)), 1, 1, cast, env));
                 }
                 return fitted;
             }
@@ -315,7 +406,7 @@ namespace FlipPix.UI.Services
 
             for (var b = 0; b < beats.Count; b++)
                 for (var part = 1; part <= owed[b]; part++)
-                    fitted.Add(new StoryBeat(beats[b].Text, part, owed[b], beats[b].Cast));
+                    fitted.Add(new StoryBeat(beats[b].Text, part, owed[b], beats[b].Cast, beats[b].Env));
 
             return fitted;
         }
@@ -347,7 +438,7 @@ namespace FlipPix.UI.Services
                 units = new List<string> { text };
             }
 
-            return Fit(units.Select(u => (u, string.Empty)).ToList(), clipCount);
+            return Fit(units.Select(u => (u, string.Empty, string.Empty)).ToList(), clipCount);
         }
 
         /// <summary>The line a clip request carries when its beat is one slice of a longer one.</summary>

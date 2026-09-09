@@ -85,13 +85,22 @@ namespace FlipPix.UI.ViewModels.Video
                 perBeatCast: false,
                 imagePath: HasSceneImage ? SceneImagePath : null,
                 log: AddLog,
-                token: token);
+                token: token,
+                // Where each clip is, at what hour, in what light. H3 renders every clip as an independent
+                // job and has never seen the one before it, so anything left unsaid is re-decided per clip
+                // — which is a film that cuts from daylight to midnight and back. See StoryContinuity.
+                continuity: true);
 
             if (beats.Count == 0)
             {
                 AddLog("WARNING: the story could not be divided into beats — nothing to write.");
                 return string.Empty;
             }
+
+            // One environment per clip, with every gap the beat sheet left filled from the clip before it.
+            var environments = StoryContinuity.Plan(beats.Select(b => b.Env).ToList(), setting,
+                                                       beats.Select(b => b.Text).ToList());
+            foreach (var line in StoryContinuity.Describe(environments)) AddLog(line);
 
             var system = await ReadSystemPromptAsync(ClipSystemPromptFile, token);
             // The guide's own pacing: roughly one cut per 1.25s, floored at 6 so a short clip is still cut
@@ -101,9 +110,13 @@ namespace FlipPix.UI.ViewModels.Video
             var bodies = await ClipChainWriter.WriteAsync(
                 _lmStudioService, model, system, clipCount,
                 buildRequest: (i, reason) =>
-                    BuildCastClipRequest(setting, beats, i, clipCount, len, shots, reason),
+                    BuildCastClipRequest(setting, beats, environments, i, clipCount, len, shots, reason),
                 normalize: NormalizeClipBody,
-                validate: (_, body) => ValidateCastClip(body),
+                // The stock checks first, then the hour: a clip written in sunlight inside a story that has
+                // been dark since beat 4 renders as a cut to another day, and nothing downstream can repair
+                // prose that describes the wrong light.
+                validate: (i, body) => ValidateCastClip(body)
+                                       ?? StoryContinuity.Contradiction(body, EnvironmentFor(environments, i)),
                 onProgress: (n, total) => ProcessingStatus = $"Writing clip {n} of {total}...",
                 log: AddLog,
                 describe: b => $"{b.Length:N0} chars, {CountShots(b)} shots",
@@ -116,6 +129,11 @@ namespace FlipPix.UI.ViewModels.Video
             // other fighting a stranger. It is also what turned a slipped bracket into a wrong render
             // rather than a cosmetic blemish.
             var chain = JoinClips(bodies
+                // The environment written into the description in code, ahead of [Shot 1]. The writer was
+                // told the same thing in words; only this is identical word for word in every clip that
+                // shares a place, and two wordings of one alley are two alleys to a model that renders them
+                // a job apart.
+                .Select((b, i) => StoryContinuity.StampScene(b, EnvironmentFor(environments, i)))
                 .Select(b => CastPromptStamp.Apply(b, Panels1, Panels2, CastWardrobe,
                                                    selectiveCast: false, CastDescriptor))
                 .Where(c => c.Length > 0)
@@ -159,7 +177,8 @@ namespace FlipPix.UI.ViewModels.Video
         /// beat before it for continuity, its own beat, and the beat after it so it ends mid-action.
         /// </summary>
         private string BuildCastClipRequest(
-            string setting, IReadOnlyList<StoryBeatSheet.StoryBeat> beats, int index, int clipCount,
+            string setting, IReadOnlyList<StoryBeatSheet.StoryBeat> beats,
+            IReadOnlyList<StoryContinuity.Environment> environments, int index, int clipCount,
             double seconds, int shots, string rejection)
         {
             var beat = beats[index];
@@ -184,9 +203,16 @@ namespace FlipPix.UI.ViewModels.Video
                 : "WARDROBE — none was decided. Read the outfits off the setting, write them out once in " +
                   "full when each character first appears, and keep that wording for the rest of the clip.";
 
+            // The setting sentence is the story world in prose; the continuity block under it is this
+            // clip's own place, hour and light as facts that may not move between clips.
             var location = setting.Length > 0
-                ? $"SETTING — the same in every clip of this chain, restated inside [Shot 1]:\n{setting}"
+                ? $"SETTING — the same story world in every clip of this chain, restated inside [Shot 1]:\n{setting}"
                 : "SETTING — read it off the beat below, and restate it inside [Shot 1].";
+
+            var continuity = StoryContinuity.WriterBlock(
+                EnvironmentFor(environments, index),
+                index > 0 ? EnvironmentFor(environments, index - 1) : (StoryContinuity.Environment?)null);
+            if (continuity.Length > 0) location += "\n\n" + continuity;
 
             var previous = index > 0
                 ? "THE CLIP BEFORE THIS ONE has already been rendered and showed this — do NOT show it " +
@@ -222,6 +248,20 @@ namespace FlipPix.UI.ViewModels.Video
                     ? $"\n\nYour previous attempt at this clip was rejected: {rejection}"
                     : string.Empty);
         }
+
+        /// <summary>
+        /// The environment clip <paramref name="index"/> was planned in, or an empty one when the chain has
+        /// no plan.
+        ///
+        /// <para>Clamped rather than checked, and index-based like every other per-clip pass in the writer:
+        /// when a clip fails both its attempts the bodies after it shift up by one, and so do their
+        /// environments. That is a chain the writer has already warned is short and asked to be re-run, and
+        /// holding the plan exactly against a broken chain is not worth threading an index through three
+        /// shared services for.</para>
+        /// </summary>
+        private protected static StoryContinuity.Environment EnvironmentFor(
+            IReadOnlyList<StoryContinuity.Environment> plan, int index) =>
+            plan.Count == 0 ? default : plan[Math.Clamp(index, 0, plan.Count - 1)];
 
         /// <summary>Raw reply → clip body, with near-miss tags mended before anything reads them. A model
         /// told not to emit a clip header sometimes emits one anyway; <see cref="SplitClips"/> takes it off

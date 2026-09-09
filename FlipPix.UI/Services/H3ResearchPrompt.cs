@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -185,6 +185,14 @@ namespace FlipPix.UI.Services
         /// <para>Derived from the beat sheet's own SETTING line, so it costs no extra model call. With no
         /// SETTING line the writer is told to fix one in clip 1's own words and hold it, which is the best
         /// that can be done without one.</para>
+        ///
+        /// <para><b>Superseded where there is a continuity plan.</b> <see cref="StoryContinuity"/> now
+        /// gives every clip its own place, hour and light, repaired into a sequence and stated per clip.
+        /// That says everything this block says and one thing it cannot: whether this particular clip is
+        /// where the last one was. Worse, on a chain that legitimately moves indoors, this block's "the
+        /// same in every clip" is simply false, and two contradictory locks in one request are resolved by
+        /// the writer, silently. So <see cref="RulesFor"/> drops it whenever a plan exists, and it remains
+        /// for the case it was written for: a chain with no plan at all.</para>
         /// </summary>
         public static string LightingLock(string? setting) =>
             string.IsNullOrWhiteSpace(setting)
@@ -295,11 +303,15 @@ namespace FlipPix.UI.Services
         /// what the clip looks like (framing, shots), then who is where, then what happens, then what is
         /// heard.
         /// </summary>
+        /// <param name="hasContinuityPlan">Whether the caller is already sending a per-clip CONTINUITY
+        /// block. When it is, the lighting lock is left out rather than repeated less precisely — see
+        /// <see cref="LightingLock"/>.</param>
         public static string RulesFor(
-            int clipIndex, bool hasSecondCharacter, double seconds, int shots, string? setting)
+            int clipIndex, bool hasSecondCharacter, double seconds, int shots, string? setting,
+            bool hasContinuityPlan = false)
         {
             var sb = new StringBuilder();
-            sb.Append(LightingLock(setting)).Append("\n\n");
+            if (!hasContinuityPlan) sb.Append(LightingLock(setting)).Append("\n\n");
             sb.Append(FramingRule).Append("\n\n");
             sb.Append(ShotPlan(seconds, shots)).Append("\n\n");
             sb.Append("OPENING SHOT — [Shot 1] of this clip opens on ")
@@ -321,7 +333,8 @@ namespace FlipPix.UI.Services
             $"clip (cuts at {string.Join(", ", CutTimes(seconds, ShotCount(seconds)))}) instead of " +
             $"{Math.Clamp((int)Math.Round(seconds * 0.8, MidpointRounding.AwayFromZero), 6, 14)}, with the " +
             "MiniMax-H3 guide's framing floor, silence mandates, speaker isolation, screen positions, " +
-            $"lighting lock and soundscape split applied to all {clipCount} clip(s).";
+            $"lighting lock (where the chain has no continuity plan of its own) and soundscape split " +
+            $"applied to all {clipCount} clip(s).";
 
         /// <summary>The counterpart line when the toggle is off — so a run's log always says which build wrote it.</summary>
         public static string DescribeShippedRun(double seconds) =>

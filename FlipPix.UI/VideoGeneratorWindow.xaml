@@ -6028,6 +6028,24 @@
                                                     </ScrollViewer>
                                                 </Border>
 
+                                                <!-- ─── ✴️ The Singularity switch ────────────────────
+                                                     Which stack the same loop samples on. Ticked, every
+                                                     story goes through h3-singularity.json — the
+                                                     author's Singularity checkpoint and model patches,
+                                                     euler/simple at 10 steps — instead of h3-eros.json.
+                                                     The cast, the reference sheets, the hunt, the finish
+                                                     and the join are identical either way, because the
+                                                     built graph carries the Eros node ids. Independent
+                                                     of the VR box below it. -->
+                                                <CheckBox Content="✴️ Sample every film on the Singularity stack" IsChecked="{Binding UseSingularity}"
+                                                          IsEnabled="{Binding CanChangeWorkflow}"
+                                                          FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
+                                                          Foreground="{StaticResource TextPrimaryBrush}"
+                                                          ToolTip="Render the whole folder through h3-singularity.json instead of h3-eros.json: the Minimax-h3 Singularity ref2va checkpoint with the author's own attention backend, chunked feed-forward, fp16 accumulation and 12/3 sigma shift, sampled euler/simple at 10 steps.&#x0a;&#x0a;Everything that makes a batch story a story is unchanged — the cast, the wardrobe, the portraits and character sheets, the @char reference panels, the clip writer, the three drafts per clip, the latent-upscale finish, RIFE and the join. Only the stack under them moves, and the model dropdown moves with it.&#x0a;&#x0a;Composes with 🥽 VR: the VR180 SBS LoRA splices onto this checkpoint the same way. Refused while anything is rendering, so a folder cannot come out half on each stack."/>
+                                                <TextBlock Text="{Binding UseSingularitySummary}"
+                                                           FontSize="10" Foreground="{StaticResource TextMutedBrush}" FontStyle="Italic"
+                                                           TextWrapping="Wrap" Margin="0,0,0,8"/>
+
                                                 <!-- ─── 🥽 The VR switch ─────────────────────────────
                                                      Ticked, the whole batch runs the H3 VR workflow:
                                                      the vr180-sbs LoRA spliced into the same Eros graph,

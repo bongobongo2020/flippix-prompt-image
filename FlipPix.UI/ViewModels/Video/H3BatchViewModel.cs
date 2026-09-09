@@ -38,6 +38,16 @@ namespace FlipPix.UI.ViewModels.Video
     /// stereo rule, the flat canvas — because a gate that leaves anything behind is a flat film with
     /// "VR" in its name.</para>
     ///
+    /// <para><b>✴️ The Singularity checkbox.</b> <see cref="UseSingularity"/> swaps the <i>stack</i> the
+    /// same loop samples on: <c>h3-singularity.json</c>, built from the author's own Singularity render —
+    /// its ref2va checkpoint, its attention/chunking/sigma-shift patches and its euler/simple 10-step
+    /// first pass — in place of <c>h3-eros.json</c>. Nothing else moves. That is possible because the
+    /// built graph carries <see cref="H3ErosViewModel"/>'s node ids, so the cast, the reference panels,
+    /// the hunt, the pick, the upscale finish, the join and the VR splice all drive it unchanged; the
+    /// authored graph could not have rendered a batch story at all, having no reference slots to put a
+    /// cast into (see <c>tools/build_h3_singularity.py</c>). The two checkboxes are independent axes —
+    /// which stack, and flat or stereo — and any of the four combinations is a valid run.</para>
+    ///
     /// <para><b>Each story is a clean slate.</b> Between files the queue is emptied and the cast is torn
     /// down — both cards, their photos, their sheets, their Parts and the wardrobe with them — because a
     /// folder of stories is a folder of different stories, and the surest way to make the fourth film
@@ -68,6 +78,7 @@ namespace FlipPix.UI.ViewModels.Video
         private bool _isBatchRunning;
         private string _batchStatus = string.Empty;
         private bool _renderAsVr;
+        private bool _useSingularity;
         private BatchStory? _current;
         private CancellationTokenSource? _batchCts;
 
@@ -92,6 +103,19 @@ namespace FlipPix.UI.ViewModels.Video
             OpenStoryFolderCommand = new RelayCommand(OpenStoryFolder, () => HasFolder);
 
             _batchFolder = _settingsService.Settings?.H3BatchFolder ?? string.Empty;
+            // Read into the field, like the VR flag below: the base constructors have already chosen a
+            // checkpoint by the time this class exists, so all that is left is to put the mode's own one
+            // back when the last run left the box ticked — and only when the dropdown is still sitting on
+            // a default, never over a checkpoint that was chosen on purpose.
+            _useSingularity = _settingsService.Settings?.H3BatchUseSingularity ?? false;
+            var storedModel = (_settingsService.Settings?.H3BatchDiffusionModel ?? string.Empty)
+                .Trim().Replace('\\', '/');
+            if (_useSingularity)
+            {
+                OfferShippedModel();
+                if (storedModel.Length == 0 || storedModel == base.ShippedModel)
+                    SelectedDiffusionModel = SingularityModel;
+            }
             // The VR checkbox is read here, not in the base constructor, because the base cannot see it —
             // its own gate ran before this class's fields existed (see H3VrViewModel.VrPipelineActive).
             // True means the canvas defaults the VR constructor skipped have to be put on by hand.
@@ -123,10 +147,53 @@ namespace FlipPix.UI.ViewModels.Video
                    (_renderAsVr
                         ? "  🥽 VR is ON: every film is rendered through the H3 VR workflow as a VR180 " +
                           "side-by-side stereo pair, named ..._LR_180.mp4."
+                        : string.Empty) +
+                   (_useSingularity
+                        ? "  ✴️ Singularity is ON: every film is sampled on the Singularity stack " +
+                          "(h3-singularity.json) instead of the Eros one."
                         : string.Empty));
         }
 
         // ── Identity ────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The author's Singularity stack, in the topology this tab drives — see
+        /// <c>tools/build_h3_singularity.py</c> for what was kept, what was replaced and why.
+        ///
+        /// <para>Its node ids are <c>h3-eros.json</c>'s, deliberately, so switching to it is a change of
+        /// file name and nothing else: the same <c>ApplyCommonInputs</c>, the same three-draft hunt, the
+        /// same latent-upscale finish, the same VR LoRA splice.</para>
+        /// </summary>
+        private const string SingularityWorkflow = "workflow/video/h3-minimax/h3-singularity.json";
+
+        /// <summary>The checkpoint that graph is built around, and what the dropdown moves to when the
+        /// box is ticked. It is a <b>ref2va</b> model — which is what makes the swap honest, because the
+        /// whole pipeline conditions on cast reference photographs.</summary>
+        public const string SingularityModel =
+            "h3-minimax/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors";
+
+        /// <summary>The Singularity graph's own first pass: ten steps of <c>euler</c>/<c>simple</c>,
+        /// which is what the author measured that checkpoint at. Eros's twelve is for the hybrid.</summary>
+        private const int SingularityFirstPassSteps = 10;
+
+        /// <summary>Whichever stack this batch is being rendered on. Both files are driven by the same
+        /// node ids, so this is the entire switch.</summary>
+        protected override string WorkflowFileName =>
+            UseSingularity ? SingularityWorkflow : base.WorkflowFileName;
+
+        /// <summary>What the chosen workflow file names in its UNETLoader — the model the dropdown labels
+        /// "(shipped)", and what a fresh install starts on.</summary>
+        protected override string ShippedModel =>
+            UseSingularity ? SingularityModel : base.ShippedModel;
+
+        /// <summary>
+        /// The first pass's step count, which belongs to the stack rather than to the tab: the Singularity
+        /// checkpoint is sampled at ten steps, the Eros hybrid at twelve. Read live by both sweeps, which
+        /// is why <see cref="CanChangeWorkflow"/> freezes the checkbox while anything is rendering — a
+        /// finish at a different step count is not the take that was hunted.
+        /// </summary>
+        protected override int FirstPassSteps =>
+            UseSingularity ? SingularityFirstPassSteps : base.FirstPassSteps;
 
         protected override string OutputSubfolder => "h3_batch";
 
@@ -320,7 +387,117 @@ namespace FlipPix.UI.ViewModels.Video
 
         /// <summary>The checkbox is frozen while anything is rendering, so a folder cannot come out half
         /// VR and half flat.</summary>
-        public bool CanChangeVrMode => !IsBatchRunning && !IsFeelingLucky && !IsProcessingQueue && !IsBuildingSheets;
+        public bool CanChangeVrMode => CanChangeWorkflow;
+
+        /// <summary>
+        /// Whether a switch of render mode is allowed at all right now — the gate both this tab's
+        /// checkboxes sit behind.
+        ///
+        /// <para>Neither of them is a dial that is frozen onto a queue item at Add to Queue: the workflow
+        /// file, the step count and the LoRA are read <i>live</i>, by both sweeps. A hunt on one stack and
+        /// a finish on the other is not the take that was picked, and a folder switched halfway is a
+        /// folder of films that do not match each other — so the answer is no while anything is
+        /// rendering, rather than a migration.</para>
+        /// </summary>
+        public bool CanChangeWorkflow =>
+            !IsBatchRunning && !IsFeelingLucky && !IsProcessingQueue && !IsBuildingSheets;
+
+        // ── The Singularity switch ────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Whether every story in the folder is sampled on the <b>Singularity</b> stack —
+        /// <c>h3-singularity.json</c>, built from the author's own Singularity render — instead of the
+        /// 🌹🎯 H3 Eros one.
+        ///
+        /// <para><b>What actually changes.</b> The checkpoint
+        /// (<c>Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8</c>), its CLIP and video VAE, the model
+        /// patches the author measured it with (comfy-kitchen attention, chunked feed-forward at 2/4096,
+        /// fp16 accumulation, sigma shift 12/3) and the first pass's sampler and step count —
+        /// <c>euler</c>/<c>simple</c> at ten steps rather than <c>er_sde</c>/<c>beta</c> at twelve.</para>
+        ///
+        /// <para><b>What deliberately does not change.</b> Everything a story is: the cast, the wardrobe,
+        /// the portraits and sheets, the @char tags and the reference panels, the clip writer, the queue,
+        /// the three-draft hunt, the board, the latent-upscale finish, RIFE and the join. The authored
+        /// Singularity graph could not have run a batch story at all — it conditions on a first and last
+        /// frame, with no reference slots to put a cast into — so the build swaps its
+        /// <c>MiniMaxH3ImageToVideo</c> for <c>MiniMaxH3ReferenceToVideo</c> and keeps the tab's own
+        /// topology around it. That is also why this is one property: the graph carries
+        /// <see cref="H3ErosViewModel"/>'s node ids, so nothing else in the render path knows which stack
+        /// it is driving.</para>
+        ///
+        /// <para>It composes with 🥽 VR: the graph ships the same empty Power Lora Loader seat, so the
+        /// VR180 SBS LoRA splices onto the Singularity checkpoint exactly as it does onto the Eros one.
+        /// Both boxes ticked is a folder of VR180 films sampled on this stack.</para>
+        ///
+        /// <para>Persisted, and refused mid-run for the reason <see cref="CanChangeWorkflow"/> gives.</para>
+        /// </summary>
+        public bool UseSingularity
+        {
+            get => _useSingularity;
+            set
+            {
+                if (_useSingularity == value) return;
+                _useSingularity = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(UseSingularitySummary));
+                OnPropertyChanged(nameof(HuntSummary));
+
+                // The checkpoint is the stack. A Singularity graph sampling the Eros hybrid is neither
+                // tab's render, so the dropdown moves with the checkbox — and says so, because it is
+                // still a dropdown and the next thing the user does may be to change it back.
+                OfferShippedModel();
+                SelectedDiffusionModel = ShippedModel;
+
+                var settings = _settingsService.Settings;
+                if (settings != null)
+                {
+                    settings.H3BatchUseSingularity = value;
+                    _settingsService.SaveSettings(settings);
+                }
+
+                AddLog(value
+                    ? "H3 Batch: ✴️ Singularity ON — every story is sampled on h3-singularity.json " +
+                      $"({LabelFor(SingularityModel)}, euler/simple at {SingularityFirstPassSteps} steps). " +
+                      "The cast, the sheets, the hunt, the finish and the join are unchanged."
+                    : "H3 Batch: Singularity off — every story is sampled on h3-eros.json again, as this " +
+                      "tab has always run it.");
+
+                // The board is the one thing this switch can quietly invalidate. A draft on it was
+                // hunted on the other stack, and the finish re-samples the picked branch on whichever
+                // stack is set when it runs — so finishing one now would produce a clip that is not the
+                // take that was chosen. Said out loud rather than migrated: the fix is one re-roll.
+                if (HasBoard)
+                    AddLog("  Note: the board still holds drafts hunted on the other stack. Finish one and " +
+                           "it is re-sampled on this one, which is not the take you picked — 🎲 re-roll " +
+                           "those clips, or clear the queue, before pressing ▶.");
+            }
+        }
+
+        /// <summary>
+        /// Puts the current mode's own checkpoint in the dropdown if it is not there already.
+        ///
+        /// <para>The list is normally the server's answer to /object_info, which has both models in it.
+        /// This is for the case where the server could not be reached: without it, ticking the box would
+        /// select a model the ComboBox has no row for, and the dropdown would go blank while the render
+        /// path used a checkpoint nothing on screen names.</para>
+        /// </summary>
+        private void OfferShippedModel()
+        {
+            var name = ShippedModel;
+            if (DiffusionModelOptions.Any(o => string.Equals(o.Value, name, StringComparison.OrdinalIgnoreCase)))
+                return;
+            DiffusionModelOptions.Add(new DiffusionModelOption(name, LabelFor(name) + " (shipped)"));
+        }
+
+        /// <summary>The line under the checkbox: which stack the next run samples on, and what it does
+        /// not change.</summary>
+        public string UseSingularitySummary => UseSingularity
+            ? "Every story is sampled on the Singularity stack — the Singularity ref2va checkpoint with " +
+              "the author's own attention, chunking and sigma-shift patches, euler/simple at " +
+              $"{SingularityFirstPassSteps} steps. The cast, the character reference sheets, the three " +
+              "drafts per clip, the upscale finish and the join are exactly as they are on H3 Eros."
+            : "Every story is sampled on the H3 Eros stack — the 10Eros hybrid checkpoint, er_sde/beta " +
+              $"at {base.FirstPassSteps} steps — exactly as this tab has always run it.";
 
         private async Task PickFolderAsync()
         {
@@ -576,6 +753,7 @@ namespace FlipPix.UI.ViewModels.Video
             OnPropertyChanged(nameof(HasStories));
             OnPropertyChanged(nameof(FolderSummary));
             OnPropertyChanged(nameof(CanChangeVrMode));
+            OnPropertyChanged(nameof(CanChangeWorkflow));
             StartBatchCommand.NotifyCanExecuteChanged();
             StopBatchCommand.NotifyCanExecuteChanged();
             ResetBatchCommand.NotifyCanExecuteChanged();

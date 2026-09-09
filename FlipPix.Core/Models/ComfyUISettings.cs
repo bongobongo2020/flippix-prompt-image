@@ -207,6 +207,13 @@ public class ComfyUISettings
     // stories is usually all one kind of film — once it is a VR folder it stays one.
     public bool H3BatchRenderAsVr { get; set; }
 
+    // H3 Batch tab: whether the batch renders every story through the Singularity stack
+    // (h3-singularity.json — the Singularity ref2va checkpoint, the comfy-kitchen attention backend,
+    // chunked feed-forward, fp16 accumulation, euler/simple at 10 steps) instead of the Eros one.
+    // Persisted for the same reason the VR flag is: a folder of stories is rendered as one set, and
+    // half of it on a different checkpoint is a folder of films that do not match each other.
+    public bool H3BatchUseSingularity { get; set; }
+
     // Seed Upscale tab: the folder its scan starts in. Empty means "the H3 4-Step output folder", which is
     // where the drafts it upscales are written.
     public string SeedUpscaleFolder { get; set; } = string.Empty;

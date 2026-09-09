@@ -246,7 +246,7 @@ namespace FlipPix.UI
         /// <summary>Clip headers in a stored chain — <c>=== CLIP 3 of 12 ===</c> and the looser shapes the
         /// tabs accept. 0 for a library whose entries are single prompts.</summary>
         private static int CountClips(string prompt) =>
-            Regex.Matches(prompt, @"^[ 	]*[=#*\-–—\[]{0,6}[ 	]*CLIP[ 	]+\d+",
+            Regex.Matches(prompt, @"^[ 	]*[=#*\-–—\[]{0,6}[ 	]*CLIP[ 	]+\d+\b",
                           RegexOptions.IgnoreCase | RegexOptions.Multiline).Count;
 
         private void DeleteButton_Click(object sender, RoutedEventArgs e)

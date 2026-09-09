@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The repo's first test project. It exists for the logic that is worth testing without a GPU, a
+    ComfyUI or an LLM behind it: the deterministic passes that decide what gets rendered — the story
+    continuity plan, the beat sheet's parsing and fitting, and the prompt stamping.
+
+    net8.0-windows with UseWPF, because it references FlipPix.UI, which is a WPF app: the services under
+    test live beside view models that pull in PresentationFramework. Nothing here touches a Dispatcher or
+    a window — the tests are pure functions over strings — but the reference brings the framework in.
+
+    Run:  dotnet test tests/FlipPix.Tests
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\FlipPix.UI\FlipPix.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

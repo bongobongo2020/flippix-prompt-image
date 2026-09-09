@@ -361,8 +361,20 @@ sudo pacman -S --needed dotnet-sdk-8.0 ffmpeg
 ./launch-linux.sh                             # run it without installing
 ```
 
+**Tests:**
+
+```bash
+dotnet test tests/FlipPix.Tests    # or dotnet test FlipPix.sln
+```
+
+They cover the deterministic passes that decide what gets rendered — the story continuity plan
+(`StoryContinuity`: where each clip is, at what hour, in what light) and the beat sheet's parsing and
+fitting — because those run without a GPU, a ComfyUI or an LLM behind them, and a chain whose place and
+time drift is a finished film that is wrong. Everything downstream of them still needs the app.
+
 Stack: .NET 8 · WPF (Windows) / Avalonia 11.2 (Linux) · MVVM (CommunityToolkit.Mvvm 8.2.2) ·
-Microsoft.Extensions.DependencyInjection · Serilog · FFMpegCore · System.Text.Json · YamlDotNet.
+Microsoft.Extensions.DependencyInjection · Serilog · FFMpegCore · System.Text.Json · YamlDotNet ·
+xUnit (tests).
 
 A note for contributors: XAML resource keys and `Style TargetType` mismatches compile cleanly and
 only blow up when the window loads, so run the app (or the verification scripts) after touching

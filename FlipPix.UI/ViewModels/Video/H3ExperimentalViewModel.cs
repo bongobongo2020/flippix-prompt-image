@@ -122,6 +122,59 @@ namespace FlipPix.UI.ViewModels.Video
         // through values fires one run, not one per click.
         private CancellationTokenSource? _autoAnalyzeCts;
 
+        private bool _researchPrompts;
+
+        /// <summary>
+        /// The 📚 <b>Researched prompts</b> switch: which of the two prompt builds writes the chain.
+        ///
+        /// <para><b>Off</b> — the build this tab has always used: <c>h3pw_clip.md</c>, a cut roughly every
+        /// 1.25 seconds, and no instruction about shot size, silence, screen sides or the audio fields.
+        /// Nothing about a run with this off differs by a byte from before the switch existed.</para>
+        ///
+        /// <para><b>On</b> — <see cref="H3ResearchPrompt"/>: <c>h3pw_clip_research.md</c> plus a per-clip
+        /// rule block, both written off the guides in <c>prompts/documents/</c>. The shot budget drops to
+        /// the guide's own three-to-five cuts with the cut times handed over explicitly, every shot is held
+        /// at medium or closer, non-speaking mouths are made explicitly silent, a spoken line gets the
+        /// speaker's face alone in frame, the fighters are given screen sides, the lighting is locked to
+        /// the beat sheet's setting line, and speech is kept out of <c>overall_soundscape:</c>.</para>
+        ///
+        /// <para>It is a switch rather than a replacement precisely so the two can be run against the same
+        /// story, the same cast and the same seeds, and compared on the finished clips.</para>
+        /// </summary>
+        public bool ResearchPrompts
+        {
+            get => _researchPrompts;
+            set
+            {
+                if (_researchPrompts == value) return;
+                _researchPrompts = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ResearchPromptsSummary));
+            }
+        }
+
+        /// <summary>The line under the switch, saying what it will do to the run about to be written.</summary>
+        public string ResearchPromptsSummary
+        {
+            get
+            {
+                var len = ClampLength(LengthSeconds);
+                return ResearchPrompts
+                    ? $"On — the MiniMax-H3 guide's build: {H3ResearchPrompt.ShotCount(len)} shots per " +
+                      $"{len:0.#}s clip (cuts at " +
+                      $"{string.Join(", ", H3ResearchPrompt.CutTimes(len, H3ResearchPrompt.ShotCount(len)))}" +
+                      "), medium-or-closer framing, silence mandates, isolated speakers, screen sides, a " +
+                      "lighting lock and voices kept out of the soundscape."
+                    : $"Off — the shipped build: {ShippedShotCount(len)} shots per {len:0.#}s clip, no " +
+                      "framing floor, no silence mandate, no screen sides. Leave it off for the clips you " +
+                      "want to compare against.";
+            }
+        }
+
+        /// <summary>The shot budget this tab has always used — a cut roughly every 1.25 seconds.</summary>
+        private static int ShippedShotCount(double seconds) =>
+            Math.Clamp((int)Math.Round(seconds * 0.8, MidpointRounding.AwayFromZero), 6, 14);
+
         /// <summary>
         /// A story .txt landing derives the wardrobe (the stock debounce on the story text already does
         /// that) but does <b>not</b> start the chain — the clip plan is wrong until the video time says
@@ -131,6 +184,9 @@ namespace FlipPix.UI.ViewModels.Video
         /// </summary>
         protected override void OnLengthSecondsChanged()
         {
+            // The switch's line quotes this clip's shot count and cut times, so it moves with the slider.
+            OnPropertyChanged(nameof(ResearchPromptsSummary));
+
             if (!HasStoryText) return; // the prompt-writer flow is story-driven; nothing to auto-run
             // A recall is restoring the length a saved chain was written at — the chain is already written,
             // and running the writer again would overwrite it two seconds later.
@@ -214,6 +270,11 @@ namespace FlipPix.UI.ViewModels.Video
                        $"{_lmStudioService.DescribeTarget(model)}");
                 if (!VisualStyle.IsAuto)
                     AddLog($"Visual style locked: {VisualStyle.Name}");
+                // Always said out loud, both ways: a chain is filed to the library the moment it lands and
+                // the only record of which build wrote it is this line.
+                AddLog(ResearchPrompts
+                    ? H3ResearchPrompt.DescribeRun(clipCount, len)
+                    : H3ResearchPrompt.DescribeShippedRun(len));
 
                 if (StoryText.Length > 20000)
                     AddLog($"WARNING: the story is {StoryText.Length:N0} characters — a local model will very " +
@@ -230,10 +291,13 @@ namespace FlipPix.UI.ViewModels.Video
                 var (setting, beats) = await BuildBeatSheetAsync(model, clipCount, len, token);
 
                 // ── Step 2 — one call per clip ─────────────────────────────────────────────────────
-                var system = await ReadSystemPromptAsync(ClipSystemPromptFile, token);
-                // The guide's own pacing: roughly one cut per 1.25s, floored at 6 so a short clip is still
-                // cut like a fight and capped at 14 so a long one stays inside 500 words.
-                var shots = Math.Clamp((int)Math.Round(len * 0.8, MidpointRounding.AwayFromZero), 6, 14);
+                var system = await ReadSystemPromptAsync(
+                    ResearchPrompts ? H3ResearchPrompt.ClipSystemPromptFile : ClipSystemPromptFile, token);
+                // Off: this tab's own pacing — roughly one cut per 1.25s, floored at 6 so a short clip is
+                // still cut like a fight and capped at 14 so a long one stays inside 500 words.
+                // On: the MiniMax-H3 guide's pacing instead — three to five shots across the clip, which is
+                // what its worked 15-second structures use (Rule 9 A–C, Rule 13, Rule 24).
+                var shots = ResearchPrompts ? H3ResearchPrompt.ShotCount(len) : ShippedShotCount(len);
 
                 var clipBodies = await ClipChainWriter.WriteAsync(
                     _lmStudioService, model, system, clipCount,
@@ -472,7 +536,12 @@ namespace FlipPix.UI.ViewModels.Video
                 perBeatCast: false,
                 imagePath: HasSceneImage ? SceneImagePath : null,
                 log: AddLog,
-                token: token);
+                token: token,
+                // Two of the guide's failures are decided here rather than in the clip writer: a beat that
+                // carries a multi-stage locomotion change tears the motion latent (Rule 35 / C2V §4.4), and
+                // a beat that carries three narrative moments comes back rushed (Rule 44). Null with the
+                // switch off, so the shared beat sheet is byte-for-byte what every other tab sends.
+                extraRules: ResearchPrompts ? H3ResearchPrompt.BeatSheetRules : null);
         }
 
         // ── Step 2: one call per clip ──────────────────────────────────────────────────────────────
@@ -554,6 +623,24 @@ namespace FlipPix.UI.ViewModels.Video
             var whole = (int)Math.Floor(seconds);
             var millis = (int)Math.Round((seconds - whole) * 1000);
 
+            // The researched build's rule block sits between the fixed context and the beat: after the
+            // cast and the wardrobe it refers to, and ahead of the action it constrains. Every rule in
+            // it is cited to the guides in prompts/documents/ — see H3ResearchPrompt.
+            var research = ResearchPrompts
+                ? H3ResearchPrompt.RulesFor(index, HasCharacter2, seconds, shots, setting) + "\n\n"
+                : string.Empty;
+
+            // The shot line is the one piece of the fixed context the two builds word differently: the
+            // researched build hands over the exact cut times, because a writer left to choose them
+            // reuses the ones it saw in an example whatever this clip's length is (Rule 27's timestamp
+            // note), which puts the last beat a third of the way in and leaves the tail as dead air.
+            var pacing = ResearchPrompts
+                ? $"THIS IS CLIP {index + 1} OF {clipCount}. It is {s} seconds long. Its shot count and " +
+                  "its cut times are in the SHOT PLAN above and are not yours to change."
+                : $"THIS IS CLIP {index + 1} OF {clipCount}. It is {s} seconds long and carries about " +
+                  $"{shots} shots — one cut roughly every second and a half. Every timestamp after " +
+                  $"[Shot 1] falls inside 00:00.000–{whole / 60:00}:{whole % 60:00}.{millis:000}.";
+
             return
                 // The mode line first: it is the one thing that decides whether H3 opens on the scene or on
                 // the reference photographs themselves.
@@ -566,9 +653,8 @@ namespace FlipPix.UI.ViewModels.Video
                 $"{location}\n\n" +
                 $"{cast}\n\n" +
                 $"{wardrobe}\n\n" +
-                $"THIS IS CLIP {index + 1} OF {clipCount}. It is {s} seconds long and carries about {shots} " +
-                "shots — one cut roughly every second and a half. Every timestamp after [Shot 1] falls " +
-                $"inside 00:00.000–{whole / 60:00}:{whole % 60:00}.{millis:000}.\n\n" +
+                research +
+                $"{pacing}\n\n" +
                 $"{previous}\n\n" +
                 $"THIS CLIP'S ACTION — expand ONLY this, and fill the whole {s} seconds with it:\n" +
                 $"{beat.Text}{part}\n\n" +

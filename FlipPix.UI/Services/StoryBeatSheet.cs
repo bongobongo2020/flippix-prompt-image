@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -99,6 +99,9 @@ namespace FlipPix.UI.Services
         /// SETTING line every clip is then handed as text — far cheaper than attaching it to all N clip
         /// calls, and it keeps the setting identical across the chain by construction.</param>
         /// <param name="log">Where the progress and warning lines go.</param>
+        /// <param name="extraRules">Optional rules appended to the user message, for a caller whose clips
+        /// cannot render just any division of a story. Null for every caller that has no such constraint,
+        /// so the shared beat sheet is what it always was unless someone asks otherwise.</param>
         public static async Task<(string Setting, List<StoryBeat> Beats)> WriteAsync(
             LMStudioService lm,
             string model,
@@ -109,10 +112,11 @@ namespace FlipPix.UI.Services
             bool perBeatCast,
             string? imagePath,
             Action<string> log,
-            CancellationToken token)
+            CancellationToken token,
+            string? extraRules = null)
         {
             var system = BuildSystem(perBeatCast);
-            var user = BuildUser(story, clipCount, seconds, castBrief, perBeatCast);
+            var user = BuildUser(story, clipCount, seconds, castBrief, perBeatCast, extraRules);
             var maxTokens = Math.Min(8000, 800 + 140 * clipCount);
 
             var setting = string.Empty;
@@ -215,7 +219,8 @@ namespace FlipPix.UI.Services
 
         /// <summary>The beat sheet's user message.</summary>
         public static string BuildUser(
-            string story, int clipCount, double seconds, string castBrief, bool perBeatCast)
+            string story, int clipCount, double seconds, string castBrief, bool perBeatCast,
+            string? extraRules = null)
         {
             var c = CultureInfo.InvariantCulture;
             var s = seconds.ToString("0.##", c);
@@ -232,6 +237,7 @@ namespace FlipPix.UI.Services
                 (perBeatCast
                     ? "Open every beat with the tags of the characters in it, in square brackets.\n"
                     : string.Empty) +
+                (string.IsNullOrWhiteSpace(extraRules) ? string.Empty : "\n" + extraRules.Trim() + "\n") +
                 "\n" + storyBlock;
         }
 

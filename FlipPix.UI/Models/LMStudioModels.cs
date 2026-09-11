@@ -17,8 +17,17 @@ namespace FlipPix.UI.Models
         [JsonPropertyName("owned_by")]
         public string OwnedBy { get; set; } = string.Empty;
 
+        // Only llama-server sends "name"; Ollama and LM Studio's /v1/models carry just "id".
+        // Callers bind and save by Name, so a blank one left the Settings model list empty
+        // and nothing selectable — fall back to the id, which is what chat requests expect.
+        private string _name = string.Empty;
+
         [JsonPropertyName("name")]
-        public string Name { get; set; } = string.Empty;
+        public string Name
+        {
+            get => string.IsNullOrWhiteSpace(_name) ? Id : _name;
+            set => _name = value ?? string.Empty;
+        }
 
         public override string ToString()
         {

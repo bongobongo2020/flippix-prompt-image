@@ -302,6 +302,10 @@ namespace FlipPix.UI.Models
         [ObservableProperty]
         private string? _outputPath;
 
+        /// <summary>True while a tab's clip editor is showing this row — ⚡ H3 Express highlights the chip.</summary>
+        [ObservableProperty]
+        private bool _isSelected;
+
         public bool HasPick => PickedSlot > 0;
 
         /// <summary>

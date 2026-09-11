@@ -8309,7 +8309,7 @@
                                         Visibility="{Binding HasBoard, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <StackPanel>
                                         <Grid Margin="0,0,0,8">
-                                            <ctrl:SectionHeader Title="CLIPS" Note="  · click a finished clip to play it" HorizontalAlignment="Left"/>
+                                            <ctrl:SectionHeader Title="CLIPS" Note="  · click a clip to see, edit and regenerate its prompt" HorizontalAlignment="Left"/>
                                             <TextBlock Text="{Binding ClipProgressText}" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                        FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TabAccentBrush}"/>
                                         </Grid>
@@ -8322,10 +8322,11 @@
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <!-- Commands live on the row model (PlayResultCommand), so no
-                                                             binding reaches out of the template. -->
-                                                        <Button Command="{Binding PlayResultCommand}" ToolTip="{Binding Summary}"
-                                                                ToolTipService.ShowOnDisabled="True" Margin="0,0,6,6">
+                                                        <!-- Reaches the tab through the ItemsControl's DataContext;
+                                                             ElementName does not resolve from inside a DataTemplate. -->
+                                                        <Button Command="{Binding DataContext.SelectClipCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" ToolTip="{Binding Summary}"
+                                                                Margin="0,0,6,6">
                                                             <Button.Style>
                                                                 <Style TargetType="Button">
                                                                     <Setter Property="Cursor" Value="Hand"/>
@@ -8343,11 +8344,12 @@
                                                                     </Style.Triggers>
                                                                 </Style>
                                                             </Button.Style>
-                                                            <Border Width="58" Height="46" CornerRadius="6" BorderThickness="1">
+                                                            <Border Width="58" Height="46" CornerRadius="6">
                                                                 <Border.Style>
                                                                     <Style TargetType="Border">
                                                                         <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
                                                                         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                                                        <Setter Property="BorderThickness" Value="1"/>
                                                                         <Style.Triggers>
                                                                             <DataTrigger Binding="{Binding IsFinished}" Value="True">
                                                                                 <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
@@ -8359,6 +8361,11 @@
                                                                             <DataTrigger Binding="{Binding IsBusy}" Value="True">
                                                                                 <Setter Property="Background" Value="{DynamicResource TabAccentBrush}"/>
                                                                                 <Setter Property="BorderBrush" Value="{DynamicResource TabAccentBrush}"/>
+                                                                            </DataTrigger>
+                                                                            <!-- The clip the editor below is showing. -->
+                                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                                <Setter Property="BorderBrush" Value="{DynamicResource TabAccentBrush}"/>
+                                                                                <Setter Property="BorderThickness" Value="2"/>
                                                                             </DataTrigger>
                                                                         </Style.Triggers>
                                                                     </Style>
@@ -8398,6 +8405,10 @@
                                                                                         <Setter Property="Text" Value="failed"/>
                                                                                         <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
                                                                                     </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding IsRerollQueued}" Value="True">
+                                                                                        <Setter Property="Text" Value="⏳ queued"/>
+                                                                                        <Setter Property="Foreground" Value="{DynamicResource TabAccentBrush}"/>
+                                                                                    </DataTrigger>
                                                                                     <DataTrigger Binding="{Binding IsBusy}" Value="True">
                                                                                         <Setter Property="Text" Value="rendering"/>
                                                                                         <Setter Property="Foreground" Value="White"/>
@@ -8413,6 +8424,103 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                         </ScrollViewer>
+
+                                        <!-- ─── The selected clip's prompt, editable, and its regenerate ─── -->
+                                        <Border Margin="0,4,0,0" Padding="10" CornerRadius="6"
+                                                Background="{StaticResource SurfaceAltBrush}"
+                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                Visibility="{Binding HasSelectedClip, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <StackPanel>
+                                                <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="{Binding SelectedClipHeader}" FontSize="12" FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                        <TextBlock Text="{Binding SelectedClipStatus}" FontSize="10" Margin="0,2,0,0"
+                                                                   TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextMutedBrush}"/>
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" Content="&#x2715;" Command="{Binding CloseClipEditorCommand}"
+                                                            Width="22" Height="22" FontSize="10" VerticalAlignment="Top"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Foreground="{StaticResource TextMutedBrush}"
+                                                            ToolTip="Close the prompt. An edit that was not regenerated is dropped."/>
+                                                </Grid>
+
+                                                <TextBox Text="{Binding ClipPromptDraft, UpdateSourceTrigger=PropertyChanged}"
+                                                         IsReadOnly="{Binding SelectedClip.IsBusy}"
+                                                         AcceptsReturn="True" TextWrapping="Wrap"
+                                                         VerticalScrollBarVisibility="Auto"
+                                                         MinHeight="90" MaxHeight="200"
+                                                         FontFamily="Consolas" FontSize="11" Padding="6,4"
+                                                         Background="{StaticResource SurfaceBrush}"
+                                                         Foreground="{StaticResource TextPrimaryBrush}"
+                                                         BorderBrush="{StaticResource BorderBrush}"
+                                                         ToolTip="The full prompt this clip was rendered from. Edit it, then Regenerate."/>
+                                                <TextBlock FontSize="10" TextWrapping="Wrap" Margin="0,4,0,8"
+                                                           Foreground="{StaticResource TextMutedBrush}"
+                                                           Text="Exactly what the clip was rendered from. @char tags become &lt;Picture N&gt; references when it renders."/>
+
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Grid.Column="0" Content="🎲 New seed" IsChecked="{Binding RegenerateWithNewSeed}"
+                                                              VerticalAlignment="Center" FontSize="11" Margin="0,0,8,0"
+                                                              Foreground="{StaticResource TextPrimaryBrush}"
+                                                              ToolTip="Off: the clip keeps its seed, so the new render changes only where the prompt does. On: a new seed — a different take of the same prompt."/>
+                                                    <Button Grid.Column="1" Content="↺ Revert" Command="{Binding RevertClipPromptCommand}"
+                                                            Height="30" Padding="10,0" FontSize="11" Margin="0,0,6,0"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            ToolTip="Put the box back to the prompt the clip was rendered from."/>
+                                                    <Button Grid.Column="2" Content="Unqueue" Command="{Binding UnqueueClipCommand}"
+                                                            Height="30" Padding="10,0" FontSize="11" Margin="0,0,6,0"
+                                                            ToolTip="Take this clip's waiting regenerate back out of the queue.">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding SelectedClip.IsRerollQueued}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+                                                    <!-- Stops a regenerate run on its own. During a batch the Stop at the
+                                                         top is the one to use: this would cut the story, not the run. -->
+                                                    <Button Grid.Column="3" Content="&#x2715; Stop" Command="{Binding CancelCommand}"
+                                                            Height="30" Padding="10,0" FontSize="11" Margin="0,0,6,0"
+                                                            ToolTip="Stop the regenerate. The clip is left as it was.">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding SelectedClip.IsBusy}" Value="True"/>
+                                                                            <Condition Binding="{Binding IsBatchRunning}" Value="False"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+                                                    <Button Grid.Column="4" Content="{Binding RegenerateButtonText}"
+                                                            Command="{Binding RegenerateClipCommand}"
+                                                            ToolTip="{Binding RegenerateTip}" ToolTipService.ShowOnDisabled="True"
+                                                            Height="30" Padding="14,0" FontSize="12"
+                                                            Style="{StaticResource AccentButtonStyle}"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </Border>
 

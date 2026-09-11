@@ -80,6 +80,7 @@ namespace FlipPix.UI.ViewModels.Video
         private bool _renderAsVr;
         private bool _useSingularity;
         private BatchStory? _current;
+        private BatchStory? _onBoard;
         private CancellationTokenSource? _batchCts;
 
         public H3BatchViewModel(
@@ -261,7 +262,7 @@ namespace FlipPix.UI.ViewModels.Video
         protected override string OutputFileSuffix => RenderAsVr ? "_LR_180" : string.Empty;
 
         /// <summary>A file name safe to build an output path from, and short enough to stay readable.</summary>
-        private static string SafeName(string title)
+        protected static string SafeName(string title)
         {
             var clean = UnsafeForFileName.Replace(title, "_").Trim().Replace(' ', '_');
             if (clean.Length > 48) clean = clean[..48];
@@ -340,6 +341,11 @@ namespace FlipPix.UI.ViewModels.Video
             get => _current;
             private set { if (_current == value) return; _current = value; OnPropertyChanged(); }
         }
+
+        /// <summary>The story whose clips are in the queue. Unlike <see cref="CurrentStory"/> it outlives the
+        /// run — the last story's clips stay on the board until the next run clears them — so a tab that
+        /// re-renders one of them after the run can still name it after its story.</summary>
+        protected BatchStory? StoryOnBoard => _onBoard;
 
         public bool CanStartBatch =>
             !IsBatchRunning && !IsFeelingLucky && !IsProcessingQueue && !IsBuildingSheets &&
@@ -681,6 +687,7 @@ namespace FlipPix.UI.ViewModels.Video
 
                         AddLog($"=== 🗂️ story {i + 1}/{todo.Count}: {story.FileName} ({text.Length:N0} chars) ===");
                         ResetForNextStory();
+                        _onBoard = story;
                         SetStory(text, story.FileName);
 
                         // The one line that makes this a batch tab rather than a second pipeline.

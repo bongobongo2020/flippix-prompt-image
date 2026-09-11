@@ -894,7 +894,7 @@ namespace FlipPix.UI.ViewModels.Video
         /// The cut belongs to the <c>TextBlock</c>, against the width and the tile height it actually has;
         /// this flattens the line breaks and guards against a pathological prompt, nothing more.</para>
         /// </summary>
-        private static string Shorten(string prompt)
+        protected static string Shorten(string prompt)
         {
             // Split-and-join flattens the line breaks and the runs of spaces in one pass. A shot list
             // reads as a paragraph here, and ragged gaps in it look like broken text.
@@ -906,7 +906,7 @@ namespace FlipPix.UI.ViewModels.Video
         /// <summary>Re-raises everything the board's buttons and headers are bound to. Marshalled, because
         /// the sweeps call it from the render thread between submissions and <c>NotifyCanExecuteChanged</c>
         /// touches WPF command state.</summary>
-        private void RefreshBoardState()
+        protected void RefreshBoardState()
         {
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())

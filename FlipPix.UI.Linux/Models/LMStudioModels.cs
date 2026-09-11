@@ -17,8 +17,17 @@ namespace FlipPix.UI.Linux.Models
         [JsonPropertyName("owned_by")]
         public string OwnedBy { get; set; } = string.Empty;
 
+        // Only llama-server sends "name"; Ollama and LM Studio's /v1/models carry just "id".
+        // Callers pick and send models by Name, so fall back to the id rather than relying on
+        // each fetch to patch it in — same as the FlipPix.UI copy.
+        private string _name = string.Empty;
+
         [JsonPropertyName("name")]
-        public string Name { get; set; } = string.Empty;
+        public string Name
+        {
+            get => string.IsNullOrWhiteSpace(_name) ? Id : _name;
+            set => _name = value ?? string.Empty;
+        }
 
         public override string ToString()
         {

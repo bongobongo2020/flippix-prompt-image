@@ -214,6 +214,13 @@ public class ComfyUISettings
     // half of it on a different checkpoint is a folder of films that do not match each other.
     public bool H3BatchUseSingularity { get; set; }
 
+    // H3 Express tab: H3 Batch without the seed hunt. Its own folder and model slot, so the two tabs can be
+    // pointed at different folders, and its own Singularity flag — which defaults ON here, because the
+    // quickest stack is the one a tab named for speed should start on.
+    public string H3ExpressFolder { get; set; } = string.Empty;
+    public string H3ExpressDiffusionModel { get; set; } = string.Empty;
+    public bool H3ExpressUseSingularity { get; set; } = true;
+
     // Seed Upscale tab: the folder its scan starts in. Empty means "the H3 4-Step output folder", which is
     // where the drafts it upscales are written.
     public string SeedUpscaleFolder { get; set; } = string.Empty;

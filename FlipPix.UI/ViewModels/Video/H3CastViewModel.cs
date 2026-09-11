@@ -3098,7 +3098,7 @@ namespace FlipPix.UI.ViewModels.Video
                 }
 
                 // 6. Render it. PrepareForUnattendedRun is what stops a hunt-board tab parking at the board.
-                LuckyPhase = "6/6 · Rendering, picking and joining…";
+                LuckyPhase = $"6/6 · {LuckyRenderPhase}";
                 PrepareForUnattendedRun();
                 await ProcessQueueAsync();
 
@@ -3127,6 +3127,9 @@ namespace FlipPix.UI.ViewModels.Video
         /// <summary>Which Image Generator base graph 🍀 photographs the cast with. Krea2-Spicy: its LoRAs
         /// are baked in, so there is nothing for an unattended run to have to choose.</summary>
         protected virtual string LuckyPhotoEngine => "krea2spicy";
+
+        /// <summary>What 🍀's last step says it is doing. A tab with no takes to pick says so.</summary>
+        protected virtual string LuckyRenderPhase => "Rendering, picking and joining…";
 
         private void ReprocessAllFailed()
         {

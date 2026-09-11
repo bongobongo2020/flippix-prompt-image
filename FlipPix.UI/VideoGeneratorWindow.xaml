@@ -7868,6 +7868,561 @@
                     </TabItem>
 
                     <!-- ═══════════════════════════════════════════════════════════════════════
+                         Tab: H3 Express
+
+                         H3 Batch without the seed hunt. A folder of story .txt files in, one joined
+                         film per story out; each story's clips are rendered once each, in order -
+                         no three drafts, no pick, no board.
+
+                         Deliberately small. Where Batch keeps the whole Eros rail under its folder
+                         card so a run can be inspected, this page is only what an unattended run
+                         needs: the folder and its stories, the handful of dials that change the
+                         film, a Render button, the player and a strip of clip chips.
+
+                         Singularity and Researched prompts both start ticked.
+                         ═══════════════════════════════════════════════════════════════════════ -->
+
+                    <TabItem Header="⚡ H3 Express">
+                        <Grid x:Name="H3ExpressRoot" DataContext="{Binding H3ExpressVM}" Style="{StaticResource TabPageStyle}">
+                            <Grid.Resources>
+                                <SolidColorBrush x:Key="TabAccentBrush" Color="{StaticResource AccentVioletColor}"/>
+                            </Grid.Resources>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="340"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- ═══ LEFT RAIL: what to render, and how ═══════════════════════ -->
+                            <Border Grid.Column="0" Style="{StaticResource TabSideRailStyle}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="12">
+
+                                        <Border Style="{StaticResource IntroBannerStyle}">
+                                            <StackPanel>
+                                                <TextBlock Text="⚡ H3 Express" Style="{StaticResource IntroTitleStyle}"/>
+                                                <TextBlock Style="{StaticResource IntroBodyStyle}"
+                                                           Text="A folder of stories in, finished films out. No seed hunt: every clip is rendered once, in order, and each story is joined."/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- ─── Stories ─────────────────────────────────────────── -->
+                                        <Border Style="{StaticResource SectionCardStyle}">
+                                            <StackPanel>
+                                                <ctrl:SectionHeader Title="STORIES" Note="  · every .txt becomes a film" Margin="0,0,0,8"/>
+
+                                                <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Button Grid.Column="0" Content="Choose folder…"
+                                                            Command="{Binding PickFolderCommand}"
+                                                            Height="30" FontSize="11" Margin="0,0,4,0"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            ToolTip="The folder of story files. Every .txt, .md or .text in it becomes one film, in name order. Sub-folders are not searched."/>
+                                                    <Button Grid.Column="1" Content="&#x27F3;" Width="30" Height="30" FontSize="13"
+                                                            Command="{Binding RescanCommand}" Margin="0,0,4,0"
+                                                            Background="{StaticResource SurfaceAltBrush}" Foreground="{DynamicResource TabAccentBrush}"
+                                                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                            ToolTip="Re-read the folder. Stories already in the list keep their state."/>
+                                                    <Button Grid.Column="2" Content="&#x1F4C1;" Width="30" Height="30" FontSize="13"
+                                                            Command="{Binding OpenStoryFolderCommand}"
+                                                            Background="{StaticResource SurfaceAltBrush}" Foreground="{DynamicResource TabAccentBrush}"
+                                                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                            ToolTip="Open the story folder in Explorer."/>
+                                                </Grid>
+                                                <TextBlock Text="{Binding FolderSummary}" FontSize="10" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,8"/>
+
+                                                <!-- One row per story: a state dot, the name and what happened, ▶ once
+                                                     it has a film. Commands are reached through the ItemsControl's own
+                                                     DataContext rather than ElementName, which does not resolve from
+                                                     inside a DataTemplate. -->
+                                                <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6"
+                                                        Background="{StaticResource SurfaceAltBrush}" MinHeight="80" MaxHeight="280">
+                                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                        <ItemsControl ItemsSource="{Binding Stories}" Margin="6,4">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid Margin="0,4">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Top" Margin="0,4,8,0">
+                                                                            <Ellipse.Style>
+                                                                                <Style TargetType="Ellipse">
+                                                                                    <Setter Property="Fill" Value="{StaticResource TextFaintBrush}"/>
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsProcessing}" Value="True">
+                                                                                            <Setter Property="Fill" Value="{DynamicResource TabAccentBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                        <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                                                            <Setter Property="Fill" Value="{StaticResource SuccessBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                        <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                                                                            <Setter Property="Fill" Value="{StaticResource DangerBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </Ellipse.Style>
+                                                                        </Ellipse>
+                                                                        <StackPanel Grid.Column="1">
+                                                                            <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                                                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                            <TextBlock Text="{Binding StatusText}" FontSize="10" TextWrapping="Wrap">
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding IsProcessing}" Value="True">
+                                                                                                <Setter Property="Foreground" Value="{DynamicResource TabAccentBrush}"/>
+                                                                                            </DataTrigger>
+                                                                                            <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                                                                <Setter Property="Foreground" Value="{StaticResource SuccessTextBrush}"/>
+                                                                                            </DataTrigger>
+                                                                                            <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                                                                                <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+                                                                        </StackPanel>
+                                                                        <Button Grid.Column="2" Content="▶" Width="26" Height="22" Padding="0" FontSize="9"
+                                                                                Margin="6,0,2,0" VerticalAlignment="Top"
+                                                                                Style="{StaticResource AccentOutlineButtonStyle}"
+                                                                                Command="{Binding DataContext.PlayStoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                Visibility="{Binding HasOutput, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                                ToolTip="Play this story's joined film."/>
+                                                                        <Button Grid.Column="3" Content="&#x2715;" Width="20" Height="22" FontSize="10"
+                                                                                VerticalAlignment="Top" Background="Transparent" BorderThickness="0"
+                                                                                Foreground="{StaticResource TextMutedBrush}"
+                                                                                Command="{Binding DataContext.RemoveStoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                ToolTip="Take this story out of the list. The file is not touched."/>
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </ScrollViewer>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- ─── Render settings ─────────────────────────────────── -->
+                                        <Border Style="{StaticResource SectionCardStyle}">
+                                            <StackPanel>
+                                                <ctrl:SectionHeader Title="RENDER" Note="  · applies to every story" Margin="0,0,0,10"/>
+
+                                                <CheckBox Content="✴️ Singularity stack" IsChecked="{Binding UseSingularity}"
+                                                          IsEnabled="{Binding CanChangeWorkflow}"
+                                                          FontSize="11" FontWeight="SemiBold" Margin="0,0,0,2"
+                                                          Foreground="{StaticResource TextPrimaryBrush}"
+                                                          ToolTip="Sample every clip on h3-singularity.json (the Singularity ref2va checkpoint, euler/simple at 10 steps). Untick for the H3 Eros stack. Locked while anything is rendering, so a folder cannot come out half on each."/>
+                                                <TextBlock Text="{Binding StackSummary}" FontSize="10" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextMutedBrush}" Margin="20,0,0,10"/>
+
+                                                <CheckBox Content="📚 Researched prompts" IsChecked="{Binding ResearchPrompts}"
+                                                          FontSize="11" FontWeight="SemiBold" Margin="0,0,0,2"
+                                                          Foreground="{StaticResource TextPrimaryBrush}"
+                                                          ToolTip="Write the clips with the build taken from the MiniMax-H3 guides: 3-5 shots per clip on explicit cut times, medium-or-closer framing, silence mandates, isolated speakers, screen sides, a lighting lock and voices kept out of the soundscape. Untick for the shipped writer."/>
+                                                <TextBlock Text="{Binding PromptBuildSummary}" FontSize="10" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextMutedBrush}" Margin="20,0,0,12"/>
+
+                                                <TextBlock Text="Aspect ratio" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                <ComboBox ItemsSource="{Binding AspectRatioOptions}"
+                                                          SelectedItem="{Binding SelectedAspectRatio}"
+                                                          Height="30" FontSize="11" Margin="0,0,0,10"/>
+
+                                                <TextBlock Text="Quality" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                <ComboBox ItemsSource="{Binding MegapixelOptions}"
+                                                          DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                          SelectedValue="{Binding Megapixels}"
+                                                          Height="30" FontSize="11" Margin="0,0,0,12"
+                                                          ToolTip="The finished canvas every clip is upscaled to."/>
+
+                                                <Grid Margin="0,0,0,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Film length" FontSize="10" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    <Border Grid.Column="1" Background="{StaticResource SurfaceAltBrush}" CornerRadius="4" Padding="8,1">
+                                                        <TextBlock Text="{Binding StoryDurationSeconds, StringFormat={}{0:0} s}"
+                                                                   FontFamily="Consolas" FontSize="12" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource TabAccentBrush}"/>
+                                                    </Border>
+                                                </Grid>
+                                                <Slider Value="{Binding StoryDurationSeconds}" Minimum="5" Maximum="120"
+                                                        TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="15"
+                                                        Foreground="{DynamicResource TabAccentBrush}" Margin="0,0,0,8"
+                                                        ToolTip="How long each story's finished film should be. Anything longer than one clip is written as a chain of clips and joined."/>
+
+                                                <Grid Margin="0,0,0,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Clip length" FontSize="10" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    <Border Grid.Column="1" Background="{StaticResource SurfaceAltBrush}" CornerRadius="4" Padding="8,1">
+                                                        <TextBlock Text="{Binding LengthSeconds, StringFormat={}{0:0} s}"
+                                                                   FontFamily="Consolas" FontSize="12" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource TabAccentBrush}"/>
+                                                    </Border>
+                                                </Grid>
+                                                <Slider Value="{Binding LengthSeconds}" Minimum="4" Maximum="15"
+                                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                                        Foreground="{DynamicResource TabAccentBrush}" Margin="0,0,0,4"
+                                                        ToolTip="How long a single H3 render is — the model's own limit is about 15 s."/>
+                                                <TextBlock Text="{Binding ClipPlanSummary}" FontSize="10" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10"/>
+
+                                                <!-- The dials you set once and leave. Shut by default. -->
+                                                <Expander Header="More options" IsExpanded="False" FontSize="11" Margin="0,0,0,8">
+                                                    <StackPanel Margin="0,8,0,0">
+                                                        <TextBlock Text="Model" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                        <Grid Margin="0,0,0,10">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <ComboBox ItemsSource="{Binding DiffusionModelOptions}"
+                                                                      DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                                      SelectedValue="{Binding SelectedDiffusionModel}"
+                                                                      Height="30" FontSize="11" Margin="0,0,6,0"
+                                                                      ToolTip="The H3 checkpoint, from diffusion_models/h3-minimax on the server. Ticking Singularity moves this to the Singularity checkpoint."/>
+                                                            <Button Grid.Column="1" Content="&#x27F3;" Width="30" Height="30" FontSize="13"
+                                                                    Command="{Binding RefreshDiffusionModelsCommand}"
+                                                                    Background="{StaticResource SurfaceAltBrush}" Foreground="{DynamicResource TabAccentBrush}"
+                                                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                                    ToolTip="Re-read the model list from ComfyUI."/>
+                                                        </Grid>
+
+                                                        <TextBlock Text="Visual style" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                        <ComboBox ItemsSource="{Binding VisualStyleOptions}" DisplayMemberPath="Name"
+                                                                  SelectedItem="{Binding VisualStyle, Mode=TwoWay}"
+                                                                  Height="30" FontSize="11" Margin="0,0,0,10"
+                                                                  ToolTip="The medium every clip is written in. Auto lets the writer choose from the story."/>
+
+                                                        <TextBlock Text="Composition canvas" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                        <ComboBox ItemsSource="{Binding PreviewMegapixelOptions}"
+                                                                  DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                                  SelectedValue="{Binding PreviewMegapixels}"
+                                                                  Height="30" FontSize="11" Margin="0,0,0,10"
+                                                                  ToolTip="The small canvas each clip is first sampled at, before it is upscaled to the Quality above in the same render."/>
+
+                                                        <TextBlock Text="Upscale steps" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                        <ComboBox ItemsSource="{Binding UpscaleStepOptions}"
+                                                                  SelectedItem="{Binding UpscaleSteps}"
+                                                                  Height="30" FontSize="11" Margin="0,0,0,10"
+                                                                  ToolTip="Fixed sigmas on the finishing pass. 4 is the default; 3 is quicker, 5 adds detail."/>
+
+                                                        <CheckBox Content="RIFE interpolation (24 → 48 fps)" IsChecked="{Binding UseRife}"
+                                                                  FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                    </StackPanel>
+                                                </Expander>
+
+                                                <TextBlock Text="{Binding HuntSummary}" FontSize="10" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+                                                <TextBlock Text="{Binding LoadSummary}" FontSize="10" TextWrapping="Wrap">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasLoadWarning}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+
+                            <!-- ═══ RIGHT: the run ═══════════════════════════════════════════ -->
+                            <Grid Grid.Column="1">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- ─── Status and the one button ───────────────────────────── -->
+                                <Border Grid.Row="0" Style="{StaticResource ToolStripStyle}" Padding="16,12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <TextBlock FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{StaticResource TextPrimaryBrush}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="{Binding BatchStatus}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding BatchStatus}" Value="">
+                                                                <Setter Property="Text" Value="Ready when you are"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,3,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="{Binding LuckyPhase}"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource TabAccentBrush}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding LuckyPhase}" Value="">
+                                                                <Setter Property="Text" Value="Choose a folder of story .txt files, then press Render."/>
+                                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="{Binding RunButtonText}"
+                                                    Command="{Binding StartBatchCommand}"
+                                                    Height="38" Padding="20,0" FontSize="13" Margin="0,0,8,0"
+                                                    Style="{StaticResource AccentButtonStyle}"
+                                                    ToolTip="Render every waiting story in the list, in order: its cast, portraits and sheets, its clips written and queued, then each clip rendered once and the film joined. One story failing does not stop the run."/>
+                                            <Button Content="&#x2715; Stop" Command="{Binding StopBatchCommand}"
+                                                    Height="38" Padding="14,0" FontSize="12" Margin="0,0,8,0"
+                                                    Style="{StaticResource DangerButtonStyle}"
+                                                    ToolTip="Cut the current story short and stop. Finished films are kept."/>
+                                            <Button Content="&#x21BB;" Command="{Binding ResetBatchCommand}"
+                                                    Width="38" Height="38" Padding="0" FontSize="14"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    ToolTip="Put every story back to waiting, so the folder can be run again."/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- ─── The player ─────────────────────────────────────────── -->
+                                <Border Grid.Row="1" Margin="16,14,16,10" Background="{StaticResource SurfaceBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Render progress, flush to the top edge of the card. -->
+                                        <ProgressBar Grid.Row="0" Height="3" Margin="8,0"
+                                                     Value="{Binding ProcessingProgress, Mode=OneWay}"
+                                                     Foreground="{DynamicResource TabAccentBrush}" Background="Transparent"
+                                                     Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                                        <Border Grid.Row="1" Background="{StaticResource PlayerSurfaceBrush}" Margin="8,8,8,0"
+                                                CornerRadius="6" MinHeight="200">
+                                            <Grid>
+                                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <StackPanel.Style>
+                                                        <Style TargetType="StackPanel">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasActivePreview}" Value="False">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </StackPanel.Style>
+                                                    <TextBlock Text="⚡" FontSize="34" HorizontalAlignment="Center"
+                                                               Foreground="{StaticResource PlayerTextBrush}"/>
+                                                    <TextBlock Text="Finished clips play here as they land"
+                                                               FontSize="12" HorizontalAlignment="Center" Margin="0,6,0,0"
+                                                               Foreground="{StaticResource PlayerTextBrush}"/>
+                                                </StackPanel>
+                                                <!-- Source is set from code-behind (ApplyH3ExpressSource) as an ABSOLUTE
+                                                     Uri, and this element is never collapsed: a string {Binding} silently
+                                                     fails on Z:\ output paths, and a collapsed MediaElement opens nothing. -->
+                                                <MediaElement x:Name="H3ExpressVideoPlayer"
+                                                              LoadedBehavior="Manual" UnloadedBehavior="Stop"
+                                                              Stretch="Uniform"
+                                                              IsMuted="{Binding IsPreviewMuted}"
+                                                              MediaOpened="H3ExpressPlayer_MediaOpened"
+                                                              MediaEnded="H3ExpressPlayer_MediaEnded"
+                                                              MediaFailed="H3ExpressPlayer_MediaFailed"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Grid Grid.Row="2" Margin="14,10,10,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="{Binding ActivePreviewLabel}"/>
+                                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding ActivePreviewLabel}" Value="">
+                                                                    <Setter Property="Text" Value="Nothing playing yet"/>
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding ProcessingStatus}" FontSize="10" Margin="0,2,0,0"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{StaticResource TextMutedBrush}"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Button Content="📁 Output" Command="{Binding OpenResultFolderCommand}"
+                                                        IsEnabled="{Binding HasResult}"
+                                                        Height="30" Padding="12,0" FontSize="11" Margin="0,0,6,0"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        ToolTip="Open the folder the films are written to."/>
+                                                <Button Content="{Binding MuteGlyph}" Command="{Binding ToggleMuteCommand}"
+                                                        ToolTip="{Binding MuteTip}"
+                                                        Width="34" Height="30" Padding="0" FontSize="13"
+                                                        Style="{StaticResource SecondaryButtonStyle}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+
+                                <!-- ─── Clip chips for the story in flight ─────────────────── -->
+                                <Border Grid.Row="2" Style="{StaticResource SectionCardStyle}" Margin="16,0,16,10" Padding="12,10"
+                                        Visibility="{Binding HasBoard, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,8">
+                                            <ctrl:SectionHeader Title="CLIPS" Note="  · click a finished clip to play it" HorizontalAlignment="Left"/>
+                                            <TextBlock Text="{Binding ClipProgressText}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TabAccentBrush}"/>
+                                        </Grid>
+                                        <ScrollViewer MaxHeight="116" VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl ItemsSource="{Binding HuntBoard}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <!-- Commands live on the row model (PlayResultCommand), so no
+                                                             binding reaches out of the template. -->
+                                                        <Button Command="{Binding PlayResultCommand}" ToolTip="{Binding Summary}"
+                                                                ToolTipService.ShowOnDisabled="True" Margin="0,0,6,6">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button">
+                                                                    <Setter Property="Cursor" Value="Hand"/>
+                                                                    <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <ContentPresenter/>
+                                                                            </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                    <Style.Triggers>
+                                                                        <Trigger Property="IsEnabled" Value="False">
+                                                                            <Setter Property="Cursor" Value="Arrow"/>
+                                                                        </Trigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                            <Border Width="58" Height="46" CornerRadius="6" BorderThickness="1">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+                                                                        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsFinished}" Value="True">
+                                                                                <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+                                                                                <Setter Property="BorderBrush" Value="{StaticResource SuccessBrush}"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding Item.ItemStatus}" Value="Failed">
+                                                                                <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                                                <Setter Property="Background" Value="{DynamicResource TabAccentBrush}"/>
+                                                                                <Setter Property="BorderBrush" Value="{DynamicResource TabAccentBrush}"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <StackPanel VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding Item.ClipIndex, StringFormat={}{0:00}}"
+                                                                               FontFamily="Consolas" FontSize="14" FontWeight="Bold"
+                                                                               HorizontalAlignment="Center">
+                                                                        <TextBlock.Style>
+                                                                            <Style TargetType="TextBlock">
+                                                                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsFinished}" Value="True">
+                                                                                        <Setter Property="Foreground" Value="{StaticResource SuccessTextBrush}"/>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Item.ItemStatus}" Value="Failed">
+                                                                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                                                        <Setter Property="Foreground" Value="White"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </TextBlock.Style>
+                                                                    </TextBlock>
+                                                                    <TextBlock FontSize="9" HorizontalAlignment="Center" Margin="0,1,0,0">
+                                                                        <TextBlock.Style>
+                                                                            <Style TargetType="TextBlock">
+                                                                                <Setter Property="Text" Value="waiting"/>
+                                                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsFinished}" Value="True">
+                                                                                        <Setter Property="Text" Value="▶ play"/>
+                                                                                        <Setter Property="Foreground" Value="{StaticResource SuccessTextBrush}"/>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Item.ItemStatus}" Value="Failed">
+                                                                                        <Setter Property="Text" Value="failed"/>
+                                                                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                                                                        <Setter Property="Text" Value="rendering"/>
+                                                                                        <Setter Property="Foreground" Value="White"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </TextBlock.Style>
+                                                                    </TextBlock>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- ─── Log ───────────────────────────────────────────────── -->
+                                <ctrl:ProcessingLogPanel Grid.Row="3" LogText="{Binding LogOutput}" MaxLogHeight="120"/>
+                            </Grid>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- ═══════════════════════════════════════════════════════════════════════
                          Tab: Seed Upscale
 
                          Where the upscale that 🌀4️⃣ H3 4-Step deliberately does not do gets done.

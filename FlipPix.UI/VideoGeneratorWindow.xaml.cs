@@ -54,6 +54,7 @@ namespace FlipPix.UI
             _viewModel.H34StepVM.PropertyChanged += H34StepVM_PropertyChanged;
             _viewModel.H3VrVM.PropertyChanged += H3VrVM_PropertyChanged;
             _viewModel.H3BatchVM.PropertyChanged += H3BatchVM_PropertyChanged;
+            _viewModel.H3ExpressVM.PropertyChanged += H3ExpressVM_PropertyChanged;
             _viewModel.SeedUpscaleVM.PropertyChanged += SeedUpscaleVM_PropertyChanged;
         }
 
@@ -67,6 +68,7 @@ namespace FlipPix.UI
             ApplyH34StepSource();
             ApplyH3VrSource();
             ApplyH3BatchSource();
+            ApplyH3ExpressSource();
             ApplySeedUpscaleSource();
         }
 
@@ -130,6 +132,12 @@ namespace FlipPix.UI
             {
                 H3BatchVideoPlayer.Position = System.TimeSpan.Zero;
                 H3BatchVideoPlayer.Play();
+            }
+
+            if (H3ExpressVideoPlayer != null && H3ExpressVideoPlayer.Source != null)
+            {
+                H3ExpressVideoPlayer.Position = System.TimeSpan.Zero;
+                H3ExpressVideoPlayer.Play();
             }
 
             if (H3MultiVideoPlayer != null && H3MultiVideoPlayer.Source != null)
@@ -343,6 +351,27 @@ namespace FlipPix.UI
 
         private void H3BatchPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e) =>
             _viewModel.H3BatchVM.ReportPreviewFailed(e.ErrorException?.Message ?? "unknown media error");
+
+        private void H3ExpressVM_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ViewModels.Video.H3ErosViewModel.ActivePreviewUri)) return;
+            if (Dispatcher.CheckAccess()) ApplyH3ExpressSource();
+            else Dispatcher.Invoke(ApplyH3ExpressSource);
+        }
+
+        private void ApplyH3ExpressSource() =>
+            ApplySharedPlayerSource(H3ExpressVideoPlayer, _viewModel.H3ExpressVM.ActivePreviewUri);
+
+        private void H3ExpressPlayer_MediaOpened(object sender, RoutedEventArgs e) => H3ExpressVideoPlayer.Play();
+
+        private void H3ExpressPlayer_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            H3ExpressVideoPlayer.Position = System.TimeSpan.FromMilliseconds(1);
+            H3ExpressVideoPlayer.Play();
+        }
+
+        private void H3ExpressPlayer_MediaFailed(object sender, ExceptionRoutedEventArgs e) =>
+            _viewModel.H3ExpressVM.ReportPreviewFailed(e.ErrorException?.Message ?? "unknown media error");
 
         private void SeedUpscaleVM_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
@@ -697,6 +726,7 @@ namespace FlipPix.UI
             H34StepVideoPlayer?.Stop();
             H3VrVideoPlayer?.Stop();
             H3BatchVideoPlayer?.Stop();
+            H3ExpressVideoPlayer?.Stop();
             SeedUpscaleVideoPlayer?.Stop();
             H3MultiVideoPlayer?.Stop();
         }

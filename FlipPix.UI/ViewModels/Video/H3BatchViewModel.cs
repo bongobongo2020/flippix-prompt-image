@@ -102,13 +102,13 @@ namespace FlipPix.UI.ViewModels.Video
             RemoveStoryCommand = new RelayCommand<BatchStory>(RemoveStory, s => s != null && !IsBatchRunning);
             OpenStoryFolderCommand = new RelayCommand(OpenStoryFolder, () => HasFolder);
 
-            _batchFolder = _settingsService.Settings?.H3BatchFolder ?? string.Empty;
+            _batchFolder = RecallBatchFolder(_settingsService.Settings) ?? string.Empty;
             // Read into the field, like the VR flag below: the base constructors have already chosen a
             // checkpoint by the time this class exists, so all that is left is to put the mode's own one
             // back when the last run left the box ticked — and only when the dropdown is still sitting on
             // a default, never over a checkpoint that was chosen on purpose.
-            _useSingularity = _settingsService.Settings?.H3BatchUseSingularity ?? false;
-            var storedModel = (_settingsService.Settings?.H3BatchDiffusionModel ?? string.Empty)
+            _useSingularity = RecallUseSingularity(_settingsService.Settings);
+            var storedModel = (RecallDiffusionModel(_settingsService.Settings) ?? string.Empty)
                 .Trim().Replace('\\', '/');
             if (_useSingularity)
             {
@@ -119,7 +119,7 @@ namespace FlipPix.UI.ViewModels.Video
             // The VR checkbox is read here, not in the base constructor, because the base cannot see it —
             // its own gate ran before this class's fields existed (see H3VrViewModel.VrPipelineActive).
             // True means the canvas defaults the VR constructor skipped have to be put on by hand.
-            _renderAsVr = _settingsService.Settings?.H3BatchRenderAsVr ?? false;
+            _renderAsVr = RecallRenderAsVr(_settingsService.Settings);
             if (_renderAsVr)
             {
                 SelectedAspectRatio = "21:9 (Ultrawide)";
@@ -128,8 +128,10 @@ namespace FlipPix.UI.ViewModels.Video
             }
             // The scan is disk work and this view model is built on the window's startup path, so it waits
             // for the dispatcher to be idle rather than running in the constructor — see the recurring
-            // slow-open bug. Nothing on screen needs the list before then.
-            if (HasFolder)
+            // slow-open bug. Nothing on screen needs the list before then. Even asking whether the folder
+            // exists is disk work — a remembered folder on a mapped drive can block for seconds — so that
+            // check waits too: Rescan makes it.
+            if (!string.IsNullOrWhiteSpace(_batchFolder))
                 Application.Current?.Dispatcher.InvokeAsync(
                     () => Rescan(reportEmpty: false),
                     System.Windows.Threading.DispatcherPriority.Background);
@@ -142,6 +144,12 @@ namespace FlipPix.UI.ViewModels.Video
                     row.Detail = LuckyPhase;
             };
 
+            LogIntro();
+        }
+
+        /// <summary>The tab's opening line in its log. Virtual so a tab built on this loop can say what it
+        /// does instead — this one promises takes, and a fork may not make any.</summary>
+        protected virtual void LogIntro() =>
             AddLog("H3 Batch initialized — point it at a folder of story .txt files and press ▶ Run batch. " +
                    "Each story gets its own cast, sheets, clips, takes and joined film, one after another." +
                    (_renderAsVr
@@ -152,7 +160,6 @@ namespace FlipPix.UI.ViewModels.Video
                         ? "  ✴️ Singularity is ON: every film is sampled on the Singularity stack " +
                           "(h3-singularity.json) instead of the Eros one."
                         : string.Empty));
-        }
 
         // ── Identity ────────────────────────────────────────────────────────────────────────────────
 
@@ -203,7 +210,10 @@ namespace FlipPix.UI.ViewModels.Video
         /// Falls back to the bare stem outside a run, which is what a manual press on this tab would use.
         /// </summary>
         protected override string OutputFileStem =>
-            _current == null ? "H3Batch" : $"H3Batch_{SafeName(_current.Title)}";
+            _current == null ? FileStemPrefix : $"{FileStemPrefix}_{SafeName(_current.Title)}";
+
+        /// <summary>What every clip and film name starts with, before the story's own name.</summary>
+        protected virtual string FileStemPrefix => "H3Batch";
 
         protected override string OutputFolderName => "H3Batch";
 
@@ -222,6 +232,25 @@ namespace FlipPix.UI.ViewModels.Video
 
         protected override void StoreDiffusionModel(ComfyUISettings settings, string name) =>
             settings.H3BatchDiffusionModel = name;
+
+        // The settings slots the folder and the two switches are remembered in. Virtual, like the model slot
+        // above, so ⚡ H3 Express keeps a folder and defaults of its own instead of sharing this tab's. Read
+        // from the constructor, so an override must only read the settings it is handed.
+        protected virtual string? RecallBatchFolder(ComfyUISettings? settings) => settings?.H3BatchFolder;
+
+        protected virtual void StoreBatchFolder(ComfyUISettings settings, string folder) =>
+            settings.H3BatchFolder = folder;
+
+        protected virtual bool RecallUseSingularity(ComfyUISettings? settings) =>
+            settings?.H3BatchUseSingularity ?? false;
+
+        protected virtual void StoreUseSingularity(ComfyUISettings settings, bool value) =>
+            settings.H3BatchUseSingularity = value;
+
+        protected virtual bool RecallRenderAsVr(ComfyUISettings? settings) => settings?.H3BatchRenderAsVr ?? false;
+
+        protected virtual void StoreRenderAsVr(ComfyUISettings settings, bool value) =>
+            settings.H3BatchRenderAsVr = value;
 
         /// <summary>The batch's own VR gate — the checkbox, nothing else. See
         /// <see cref="H3VrViewModel.VrPipelineActive"/> for everything that reads it.</summary>
@@ -264,7 +293,7 @@ namespace FlipPix.UI.ViewModels.Video
                 var settings = _settingsService.Settings;
                 if (settings != null)
                 {
-                    settings.H3BatchFolder = value;
+                    StoreBatchFolder(settings, value);
                     _settingsService.SaveSettings(settings);
                 }
             }
@@ -303,6 +332,13 @@ namespace FlipPix.UI.ViewModels.Video
         {
             get => _batchStatus;
             private set { if (_batchStatus == value) return; _batchStatus = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>The story being rendered right now, or null between runs — for a tab that shows it.</summary>
+        public BatchStory? CurrentStory
+        {
+            get => _current;
+            private set { if (_current == value) return; _current = value; OnPropertyChanged(); }
         }
 
         public bool CanStartBatch =>
@@ -366,14 +402,14 @@ namespace FlipPix.UI.ViewModels.Video
                 var settings = _settingsService.Settings;
                 if (settings != null)
                 {
-                    settings.H3BatchRenderAsVr = value;
+                    StoreRenderAsVr(settings, value);
                     _settingsService.SaveSettings(settings);
                 }
 
                 AddLog(value
-                    ? "H3 Batch: 🥽 VR ON — every story in the folder will be rendered through the H3 VR " +
+                    ? $"{TabDisplayName}: 🥽 VR ON — every story in the folder will be rendered through the H3 VR " +
                       "workflow as a VR180 stereo pair (21:9, LoRA on top, films named ..._LR_180.mp4)."
-                    : "H3 Batch: VR off — every story in the folder will be an ordinary flat film, as before.");
+                    : $"{TabDisplayName}: VR off — every story in the folder will be an ordinary flat film, as before.");
             }
         }
 
@@ -451,22 +487,22 @@ namespace FlipPix.UI.ViewModels.Video
                 var settings = _settingsService.Settings;
                 if (settings != null)
                 {
-                    settings.H3BatchUseSingularity = value;
+                    StoreUseSingularity(settings, value);
                     _settingsService.SaveSettings(settings);
                 }
 
                 AddLog(value
-                    ? "H3 Batch: ✴️ Singularity ON — every story is sampled on h3-singularity.json " +
+                    ? $"{TabDisplayName}: ✴️ Singularity ON — every story is sampled on h3-singularity.json " +
                       $"({LabelFor(SingularityModel)}, euler/simple at {SingularityFirstPassSteps} steps). " +
                       "The cast, the sheets, the hunt, the finish and the join are unchanged."
-                    : "H3 Batch: Singularity off — every story is sampled on h3-eros.json again, as this " +
+                    : $"{TabDisplayName}: Singularity off — every story is sampled on h3-eros.json again, as this " +
                       "tab has always run it.");
 
                 // The board is the one thing this switch can quietly invalidate. A draft on it was
                 // hunted on the other stack, and the finish re-samples the picked branch on whichever
                 // stack is set when it runs — so finishing one now would produce a clip that is not the
                 // take that was chosen. Said out loud rather than migrated: the fix is one re-roll.
-                if (HasBoard)
+                if (HasDrafts)
                     AddLog("  Note: the board still holds drafts hunted on the other stack. Finish one and " +
                            "it is re-sampled on this one, which is not the take you picked — 🎲 re-roll " +
                            "those clips, or clear the queue, before pressing ▶.");
@@ -527,7 +563,7 @@ namespace FlipPix.UI.ViewModels.Video
             }
             catch (Exception ex)
             {
-                AddLog($"H3 Batch: the folder could not be read ({ex.Message}).");
+                AddLog($"{TabDisplayName}: the folder could not be read ({ex.Message}).");
                 return;
             }
 
@@ -551,9 +587,9 @@ namespace FlipPix.UI.ViewModels.Video
             OnCanExecuteChanged();
 
             if (_stories.Count == 0 && reportEmpty)
-                AddLog($"H3 Batch: no .txt, .md or .text files in {BatchFolder}.");
+                AddLog($"{TabDisplayName}: no .txt, .md or .text files in {BatchFolder}.");
             else if (added > 0)
-                AddLog($"H3 Batch: {added} story file(s) added — {_stories.Count(s => s.IsWaiting)} waiting.");
+                AddLog($"{TabDisplayName}: {added} story file(s) added — {_stories.Count(s => s.IsWaiting)} waiting.");
         }
 
         private void RemoveStory(BatchStory? story)
@@ -570,7 +606,7 @@ namespace FlipPix.UI.ViewModels.Video
             foreach (var s in _stories) s.Reset();
             OnPropertyChanged(nameof(FolderSummary));
             OnCanExecuteChanged();
-            AddLog("H3 Batch: every story back to waiting.");
+            AddLog($"{TabDisplayName}: every story back to waiting.");
         }
 
         private void OpenStoryFolder()
@@ -585,7 +621,7 @@ namespace FlipPix.UI.ViewModels.Video
             _batchCts?.Cancel();
             // The story in flight is cancelled too — 🍀 owns its own token, and Cancel reaches it.
             CancelEverythingPublic();
-            AddLog("H3 Batch: stopping after the current story is cut short.");
+            AddLog($"{TabDisplayName}: stopping after the current story is cut short.");
         }
 
         /// <summary>The tab's ✕ Cancel, reachable from the batch loop. Named apart from the command so it
@@ -618,7 +654,7 @@ namespace FlipPix.UI.ViewModels.Video
             try
             {
                 var todo = _stories.Where(s => s.IsWaiting).ToList();
-                AddLog($"=== 🗂️ H3 Batch{(RenderAsVr ? " · VR180" : string.Empty)}: " +
+                AddLog($"=== {TabDisplayName}{(RenderAsVr ? " · VR180" : string.Empty)}: " +
                        $"{todo.Count} story file(s) from {BatchFolder} ===");
 
                 for (var i = 0; i < todo.Count; i++)
@@ -626,7 +662,7 @@ namespace FlipPix.UI.ViewModels.Video
                     if (token.IsCancellationRequested) break;
 
                     var story = todo[i];
-                    _current = story;
+                    CurrentStory = story;
                     var startedOne = DateTime.Now;
                     story.State = BatchStoryState.Processing;
                     story.Detail = string.Empty;
@@ -697,22 +733,22 @@ namespace FlipPix.UI.ViewModels.Video
                     ? $"Stopped — {done} done, {failed} failed."
                     : $"Batch finished — {done} done, {failed} failed, " +
                       $"{(DateTime.Now - startedAll).TotalMinutes:0.#} min.";
-                AddLog($"=== 🗂️ H3 Batch {(token.IsCancellationRequested ? "stopped" : "finished")}: " +
+                AddLog($"=== {TabDisplayName} {(token.IsCancellationRequested ? "stopped" : "finished")}: " +
                        $"{done} done, {failed} failed, {(DateTime.Now - startedAll).TotalMinutes:0.#} min ===");
             }
             catch (OperationCanceledException)
             {
                 BatchStatus = $"Stopped — {done} done, {failed} failed.";
-                AddLog("🗂️ H3 Batch stopped.");
+                AddLog($"{TabDisplayName} stopped.");
             }
             catch (Exception ex)
             {
                 BatchStatus = $"Stopped: {ex.Message}";
-                AddLog($"🗂️ H3 Batch stopped: {ex.Message}");
+                AddLog($"{TabDisplayName} stopped: {ex.Message}");
             }
             finally
             {
-                _current = null;
+                CurrentStory = null;
                 IsBatchRunning = false;
                 _batchCts?.Dispose();
                 _batchCts = null;

@@ -153,6 +153,12 @@ namespace FlipPix.UI.ViewModels
         public H3BatchViewModel H3BatchVM { get; }
 
         /// <summary>
+        /// H3 Express ViewModel — H3 Batch without the seed hunt: a folder of stories, each one's clips
+        /// rendered straight through one at a time and joined. Singularity and researched prompts by default.
+        /// </summary>
+        public H3ExpressViewModel H3ExpressVM { get; }
+
+        /// <summary>
         /// Seed Upscale ViewModel — scans a folder of drafts and their recipes, and re-renders only the
         /// ticked ones: the recorded seed is sampled back through the same stack to reproduce its latent,
         /// and that latent is what MinimaxH3LatentUpscaler3D lifts to the finished canvas.
@@ -365,6 +371,15 @@ namespace FlipPix.UI.ViewModels
                 _workflowCoordinator,
                 _fileDialogService);
 
+            H3ExpressVM = new H3ExpressViewModel(
+                comfyUIService,
+                lmStudioService,
+                logger,
+                settingsService,
+                serviceProvider,
+                _workflowCoordinator,
+                _fileDialogService);
+
             SeedUpscaleVM = new SeedUpscaleViewModel(
                 comfyUIService,
                 lmStudioService,
@@ -410,6 +425,7 @@ namespace FlipPix.UI.ViewModels
             H34StepVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             H3VrVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             H3BatchVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
+            H3ExpressVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             SeedUpscaleVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             H3ChainVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
             H3MultiVM.PlayRequested += (s, e) => PlayRequested?.Invoke(this, e);
@@ -432,6 +448,7 @@ namespace FlipPix.UI.ViewModels
             H34StepVM.PropertyChanged += ForwardPropertyChanged;
             H3VrVM.PropertyChanged += ForwardPropertyChanged;
             H3BatchVM.PropertyChanged += ForwardPropertyChanged;
+            H3ExpressVM.PropertyChanged += ForwardPropertyChanged;
             SeedUpscaleVM.PropertyChanged += ForwardPropertyChanged;
             H3ChainVM.PropertyChanged += ForwardPropertyChanged;
             H3MultiVM.PropertyChanged += ForwardPropertyChanged;
@@ -729,6 +746,7 @@ namespace FlipPix.UI.ViewModels
                 H34StepVM.PropertyChanged -= ForwardPropertyChanged;
                 H3VrVM.PropertyChanged -= ForwardPropertyChanged;
                 H3BatchVM.PropertyChanged -= ForwardPropertyChanged;
+                H3ExpressVM.PropertyChanged -= ForwardPropertyChanged;
                 SeedUpscaleVM.PropertyChanged -= ForwardPropertyChanged;
                 H3ChainVM.PropertyChanged -= ForwardPropertyChanged;
                 H3MultiVM.PropertyChanged -= ForwardPropertyChanged;
@@ -750,6 +768,7 @@ namespace FlipPix.UI.ViewModels
                 (H34StepVM as IDisposable)?.Dispose();
                 (H3VrVM as IDisposable)?.Dispose();
                 (H3BatchVM as IDisposable)?.Dispose();
+                (H3ExpressVM as IDisposable)?.Dispose();
                 (SeedUpscaleVM as IDisposable)?.Dispose();
                 (H3ChainVM as IDisposable)?.Dispose();
                 (H3MultiVM as IDisposable)?.Dispose();

@@ -132,6 +132,10 @@ namespace FlipPix.UI.ViewModels.Video
         /// tab's — and a log line saying which tab is holding the GPU has to name the right one.</summary>
         protected virtual string RunTokenPrefix => "h3eros";
 
+        /// <summary>Whether a finished clip is a take somebody picked. False on a tab with no hunt, whose
+        /// status line and result caption then have no take to name.</summary>
+        protected virtual bool NamesTakes => true;
+
         private readonly ObservableCollection<ErosHuntClip> _board = new();
 
         /// <summary>
@@ -1344,13 +1348,7 @@ namespace FlipPix.UI.ViewModels.Video
 
             try
             {
-                await HuntSweepAsync(token);
-                // Before the finish sweep, not after: a clip re-worded during the hunt is re-hunted while
-                // the board is still being picked over, so its new takes are there to choose between rather
-                // than arriving after everything else has already been upscaled.
-                await DrainRerollQueueAsync(token);
-                await FinishSweepAsync(token);
-                await DrainRerollQueueAsync(token);
+                await RunSweepsAsync(token);
             }
             catch (OperationCanceledException)
             {
@@ -1372,6 +1370,21 @@ namespace FlipPix.UI.ViewModels.Video
                 SaveQueueToFile();
                 OnCanExecuteChanged();
             }
+        }
+
+        /// <summary>
+        /// The GPU half of a queue pass: every clip hunted, then every pick finished. Virtual for a tab with
+        /// no board to choose from — ⚡ H3 Express seeds each clip itself and goes straight to the finish.
+        /// </summary>
+        protected virtual async Task RunSweepsAsync(CancellationToken token)
+        {
+            await HuntSweepAsync(token);
+            // Before the finish sweep, not after: a clip re-worded during the hunt is re-hunted while
+            // the board is still being picked over, so its new takes are there to choose between rather
+            // than arriving after everything else has already been upscaled.
+            await DrainRerollQueueAsync(token);
+            await FinishSweepAsync(token);
+            await DrainRerollQueueAsync(token);
         }
 
         /// <summary>
@@ -1469,7 +1482,7 @@ namespace FlipPix.UI.ViewModels.Video
         /// Every clip that has a take picked and has not been finished, in queue order: the picked latent
         /// upscaled, re-sampled, RIFE'd, muxed — and, as each story's last clip lands, joined.
         /// </summary>
-        private async Task FinishSweepAsync(CancellationToken token)
+        protected async Task FinishSweepAsync(CancellationToken token)
         {
             var todo = _board.Where(c => c.HasPick && !c.IsFinished && !c.IsStale &&
                                          c.Item.ItemStatus == QueueItemStatus.Pending).ToList();
@@ -1874,7 +1887,9 @@ namespace FlipPix.UI.ViewModels.Video
             var lease = await AcquireLeaseAsync($"{TabDisplayName} finish", token);
             try
             {
-                ProcessingStatus = $"Upscaling {row.Title} take {chosen} to {fw}×{fh}...";
+                ProcessingStatus = NamesTakes
+                    ? $"Upscaling {row.Title} take {chosen} to {fw}×{fh}..."
+                    : $"Rendering {row.Title} at {fw}×{fh}...";
                 var local = await SubmitAndRetrieveAsync(json, $"{runToken}_final", NodeFinalSave,
                                                          progressFrom, progressTo, token);
                 if (local == null || !File.Exists(local))
@@ -1899,7 +1914,7 @@ namespace FlipPix.UI.ViewModels.Video
                     ShowInPlayer(finalPath, $"{row.Title} · finished · take {chosen}");
                     ResultVideoInfo = $"{TabDisplayName} • " +
                                       $"{(item.IsStoryClip ? $"clip {item.ClipIndex}/{item.ClipCount} • " : string.Empty)}" +
-                                      $"take {chosen} • ≈{fw}×{fh} • {item.AspectRatio} • " +
+                                      $"{(NamesTakes ? $"take {chosen} • " : string.Empty)}≈{fw}×{fh} • {item.AspectRatio} • " +
                                       $"{len:0.#}s • {fi.Length / 1024 / 1024.0:F1}MB";
                     HasResult = true;
                     OnCanExecuteChanged();

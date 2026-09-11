@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
@@ -53,6 +55,16 @@ namespace FlipPix.UI.ViewModels.Video
                    workflowCoordinator, fileDialogService)
         {
             ResearchPrompts = true;
+
+            // The LoRA dropdown starts with None and whatever was chosen last run, so it is usable before —
+            // and if — the server answers; the folder listing is a network round trip, off this thread.
+            _selectedLora = NormalizeLora(_settingsService.Settings?.H3ExpressLora);
+            _loraStrength = Math.Clamp(_settingsService.Settings?.H3ExpressLoraStrength ?? 1.0,
+                                       MinLoraStrength, MaxLoraStrength);
+            LoraOptions.Add(NoLora);
+            if (_selectedLora.Length > 0) LoraOptions.Add(new DiffusionModelOption(_selectedLora, LabelFor(_selectedLora)));
+            RefreshLorasCommand = new RelayCommand(() => _ = LoadLorasAsync(), () => !_isLoadingLoras);
+            _ = LoadLorasAsync();
 
             PlayStoryCommand = new RelayCommand<BatchStory>(PlayStory);
             SelectClipCommand = new RelayCommand<ErosHuntClip>(SelectClip);
@@ -147,6 +159,194 @@ namespace FlipPix.UI.ViewModels.Video
         protected override void StoreRenderAsVr(ComfyUISettings settings, bool value) { }
 
         protected override bool VrPipelineActive => false;
+
+        // ── The LoRA ────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Where the dropdown looks, as ComfyUI names it: relative to the loras root.</summary>
+        private const string LoraFolder = "H3/";
+
+        /// <summary>The node the LoRA is spliced in as. Node 21 is the rgthree Power Lora Loader both stacks
+        /// ship empty — the same seat 🥽 H3 VR splices its LoRA onto.</summary>
+        private const string NodeLora = "h3express_lora";
+        private const string NodePowerLora = "21";
+
+        public const double MinLoraStrength = 0.0;
+        public const double MaxLoraStrength = 2.0;
+
+        private static readonly DiffusionModelOption NoLora = new(string.Empty, "None");
+
+        private string _selectedLora = string.Empty;
+        private double _loraStrength = 1.0;
+        private bool _isLoadingLoras;
+        private bool _rebuildingLoras;
+
+        /// <summary>None, then every LoRA the server reports under loras/H3.</summary>
+        public ObservableCollection<DiffusionModelOption> LoraOptions { get; } = new();
+
+        public RelayCommand RefreshLorasCommand { get; }
+
+        /// <summary>
+        /// The LoRA every clip is rendered with, as ComfyUI names it (<c>H3/…safetensors</c>), or empty for
+        /// none. Read live at submit, like the stack switch, so a clip regenerated after a change picks the
+        /// change up; the dropdown is locked while anything renders, so one story cannot come out on two.
+        /// </summary>
+        public string SelectedLora
+        {
+            get => _selectedLora;
+            set
+            {
+                // A rebuild's Clear() pushes null back through the two-way binding; that is not a choice.
+                if (_rebuildingLoras) return;
+                var name = NormalizeLora(value);
+                if (_selectedLora == name) return;
+                _selectedLora = name;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(HasLora));
+                OnPropertyChanged(nameof(LoraSummary));
+
+                var settings = _settingsService.Settings;
+                if (settings != null)
+                {
+                    settings.H3ExpressLora = name;
+                    _settingsService.SaveSettings(settings);
+                }
+                AddLog(name.Length == 0
+                    ? "LoRA: none — clips are rendered on the bare checkpoint."
+                    : $"LoRA: {LabelFor(name)} at {LoraStrength:0.00} — every clip rendered from now on uses it.");
+            }
+        }
+
+        public bool HasLora => _selectedLora.Length > 0;
+
+        /// <summary>The LoRA's <c>strength_model</c>. 0 leaves it out of the graph altogether.</summary>
+        public double LoraStrength
+        {
+            get => _loraStrength;
+            set
+            {
+                var v = Math.Clamp(Math.Round(value, 2), MinLoraStrength, MaxLoraStrength);
+                if (Math.Abs(_loraStrength - v) < 0.0001) return;
+                _loraStrength = v;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(LoraSummary));
+
+                var settings = _settingsService.Settings;
+                if (settings != null)
+                {
+                    settings.H3ExpressLoraStrength = v;
+                    _settingsService.SaveSettings(settings);
+                }
+            }
+        }
+
+        public string LoraSummary =>
+            _isLoadingLoras ? "Reading loras/H3 from ComfyUI…"
+            : !HasLora ? $"No LoRA. {Math.Max(0, LoraOptions.Count - 1)} available in loras/H3."
+            : LoraStrength <= 0.0 ? $"{LabelFor(_selectedLora)} at 0 — left out of the graph."
+            : $"{LabelFor(_selectedLora)} at {LoraStrength:0.00}, on top of the checkpoint above.";
+
+        private static string NormalizeLora(string? name) => (name ?? string.Empty).Trim().Replace('\\', '/');
+
+        /// <summary>
+        /// Fills <see cref="LoraOptions"/> from /object_info/LoraLoader, keeping only what lives in
+        /// <see cref="LoraFolder"/>. A server that cannot be reached leaves the list as the constructor seeded
+        /// it; a chosen LoRA the server no longer has stays in the list, labelled, rather than silently
+        /// dropping to none.
+        /// </summary>
+        private async Task LoadLorasAsync()
+        {
+            if (_isLoadingLoras) return;
+            _isLoadingLoras = true;
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                RefreshLorasCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(LoraSummary));
+            });
+            try
+            {
+                var all = await _comfyUIService.HttpClient.GetLoraFilenamesAsync();
+                var found = all
+                    .Select(NormalizeLora)
+                    .Where(n => n.StartsWith(LoraFolder, StringComparison.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var keep = _selectedLora;
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    _rebuildingLoras = true;
+                    try
+                    {
+                        LoraOptions.Clear();
+                        LoraOptions.Add(NoLora);
+                        foreach (var n in found) LoraOptions.Add(new DiffusionModelOption(n, LabelFor(n)));
+
+                        // The server's own spelling wins where it differs only in case, so lora_name is
+                        // byte-for-byte what ComfyUI offered.
+                        var match = found.FirstOrDefault(n => string.Equals(n, keep, StringComparison.OrdinalIgnoreCase));
+                        if (match == null && keep.Length > 0)
+                            LoraOptions.Add(new DiffusionModelOption(keep, LabelFor(keep) + " (not on server)"));
+                        _selectedLora = match ?? keep;
+                    }
+                    finally
+                    {
+                        _rebuildingLoras = false;
+                    }
+                    // The notification is what puts the selection back on screen after Clear() blanked it.
+                    OnPropertyChanged(nameof(SelectedLora));
+                    OnPropertyChanged(nameof(HasLora));
+                });
+                AddLog($"LoRA list: {found.Count} in loras/H3.");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"LoRA list could not be read ({ex.Message}).");
+            }
+            finally
+            {
+                _isLoadingLoras = false;
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    RefreshLorasCommand.NotifyCanExecuteChanged();
+                    OnPropertyChanged(nameof(LoraSummary));
+                });
+            }
+        }
+
+        /// <summary>
+        /// The stock inputs, then the chosen LoRA spliced in after node 21 — so every reader of the model
+        /// (the guiders and scheduler on Eros, the sigma shift on Singularity) samples through it.
+        /// </summary>
+        protected override void ApplyCommonInputs(
+            JsonObject root, H3CastQueueItem item, IReadOnlyList<string> uploaded,
+            string prompt, double lengthSeconds)
+        {
+            base.ApplyCommonInputs(root, item, uploaded, prompt, lengthSeconds);
+
+            var lora = _selectedLora;
+            var strength = _loraStrength;
+            if (lora.Length == 0 || strength <= 0.0) return;
+
+            RequireClass(root, NodePowerLora, "Power Lora Loader (rgthree)");
+
+            // Retarget first, while the LoRA node does not exist yet: it rewrites every reader of node 21,
+            // and a node added before the call would have its own input pointed at itself.
+            Retarget(root, NodePowerLora, 0, NodeLora);
+            root[NodeLora] = new JsonObject
+            {
+                ["inputs"] = new JsonObject
+                {
+                    ["lora_name"] = lora,
+                    ["strength_model"] = strength,
+                    ["model"] = new JsonArray(NodePowerLora, 0)
+                },
+                ["class_type"] = "LoraLoaderModelOnly",
+                ["_meta"] = new JsonObject { ["title"] = "H3 Express LoRA" }
+            };
+
+            AddLog($"  LoRA {LabelFor(lora)} at {strength:0.00}.");
+        }
 
         // ── The render: no hunt ─────────────────────────────────────────────────────────────────────
 

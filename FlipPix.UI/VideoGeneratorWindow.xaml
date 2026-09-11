@@ -8106,6 +8106,46 @@
                                                                     ToolTip="Re-read the model list from ComfyUI."/>
                                                         </Grid>
 
+                                                        <TextBlock Text="LoRA" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                                        <Grid Margin="0,0,0,4" IsEnabled="{Binding CanChangeWorkflow}">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <ComboBox ItemsSource="{Binding LoraOptions}"
+                                                                      DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                                      SelectedValue="{Binding SelectedLora}"
+                                                                      Height="30" FontSize="11" Margin="0,0,6,0"
+                                                                      ToolTip="An optional LoRA from loras/H3 on the server, applied on top of the model above to every clip. Locked while anything is rendering, so a story cannot come out half with it."/>
+                                                            <Button Grid.Column="1" Content="&#x27F3;" Width="30" Height="30" FontSize="13"
+                                                                    Command="{Binding RefreshLorasCommand}"
+                                                                    Background="{StaticResource SurfaceAltBrush}" Foreground="{DynamicResource TabAccentBrush}"
+                                                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                                    ToolTip="Re-read loras/H3 from ComfyUI."/>
+                                                        </Grid>
+                                                        <StackPanel IsEnabled="{Binding CanChangeWorkflow}"
+                                                                    Visibility="{Binding HasLora, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <Grid Margin="0,2,0,2">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Text="LoRA strength" FontSize="10" VerticalAlignment="Center"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                                <Border Grid.Column="1" Background="{StaticResource SurfaceAltBrush}" CornerRadius="4" Padding="8,1">
+                                                                    <TextBlock Text="{Binding LoraStrength, StringFormat={}{0:0.00}}"
+                                                                               FontFamily="Consolas" FontSize="12" FontWeight="Bold"
+                                                                               Foreground="{DynamicResource TabAccentBrush}"/>
+                                                                </Border>
+                                                            </Grid>
+                                                            <Slider Value="{Binding LoraStrength}" Minimum="0" Maximum="2"
+                                                                    TickFrequency="0.05" IsSnapToTickEnabled="True" SmallChange="0.05" LargeChange="0.25"
+                                                                    Foreground="{DynamicResource TabAccentBrush}" Margin="0,0,0,2"
+                                                                    ToolTip="The LoRA's model strength. 1.00 is the default; 0 leaves it out of the graph."/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding LoraSummary}" FontSize="10" TextWrapping="Wrap"
+                                                                   Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10"/>
+
                                                         <TextBlock Text="Visual style" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                                         <ComboBox ItemsSource="{Binding VisualStyleOptions}" DisplayMemberPath="Name"
                                                                   SelectedItem="{Binding VisualStyle, Mode=TwoWay}"

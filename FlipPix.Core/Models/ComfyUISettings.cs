@@ -220,6 +220,9 @@ public class ComfyUISettings
     public string H3ExpressFolder { get; set; } = string.Empty;
     public string H3ExpressDiffusionModel { get; set; } = string.Empty;
     public bool H3ExpressUseSingularity { get; set; } = true;
+    // An optional LoRA from loras/H3, spliced onto whichever checkpoint the tab samples. Empty is none.
+    public string H3ExpressLora { get; set; } = string.Empty;
+    public double H3ExpressLoraStrength { get; set; } = 1.0;
 
     // Seed Upscale tab: the folder its scan starts in. Empty means "the H3 4-Step output folder", which is
     // where the drafts it upscales are written.

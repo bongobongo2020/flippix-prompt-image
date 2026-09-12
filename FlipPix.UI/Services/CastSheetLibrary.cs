@@ -140,7 +140,10 @@ namespace FlipPix.UI.Services
         /// The sheet already built from this photograph, or null. Strongest match wins; among equals, the
         /// most recently built, because that is the one made with the newest sheet prompt and canvas.
         /// </summary>
-        public async Task<Match?> FindAsync(string? sourcePhotoPath, CancellationToken token = default)
+        /// <param name="wardrobe">When given, only a sheet built wearing exactly this outfit counts — for a caller
+        /// that would rebuild any other one anyway.</param>
+        public async Task<Match?> FindAsync(string? sourcePhotoPath, CancellationToken token = default,
+                                            string? wardrobe = null)
         {
             if (string.IsNullOrWhiteSpace(sourcePhotoPath)) return null;
 
@@ -153,6 +156,10 @@ namespace FlipPix.UI.Services
             Match? best = null;
             foreach (var e in index.Entries)
             {
+                if (wardrobe != null &&
+                    !string.Equals((e.Wardrobe ?? string.Empty).Trim(), wardrobe.Trim(), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 var sheetPath = Path.Combine(Folder, e.SheetFile);
                 if (!File.Exists(sheetPath)) continue;
 

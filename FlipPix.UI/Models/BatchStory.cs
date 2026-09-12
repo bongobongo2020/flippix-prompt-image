@@ -32,8 +32,30 @@ namespace FlipPix.UI.Models
             Title = Path.GetFileNameWithoutExtension(path);
         }
 
-        /// <summary>Full path on disk; the file is not read until this story's turn.</summary>
+        /// <summary>What marks a <see cref="FilePath"/> as a saved story rather than a file.</summary>
+        public const string LibraryPrefix = "library:";
+
+        /// <summary>
+        /// A story added from ⚡ H3 Express's 📚 Story prompts instead of found in the folder. Its text comes with
+        /// it — it may have been imported from another tab and have no file anywhere — so unlike a folder row it
+        /// carries the story itself (<see cref="InlineText"/>). Its <see cref="FilePath"/> is only a unique key.
+        /// </summary>
+        public BatchStory(string title, string storyText, string storyHash)
+        {
+            Title = string.IsNullOrWhiteSpace(title) ? "story" : title.Trim();
+            FileName = Title + ".txt";
+            FilePath = LibraryPrefix + storyHash;
+            InlineText = storyText;
+            StoryHash = storyHash;
+        }
+
+        /// <summary>Full path on disk; the file is not read until this story's turn. For a saved story, a key.</summary>
         public string FilePath { get; }
+
+        /// <summary>The story's text for a saved story; null for a folder row, which is read when its turn comes.</summary>
+        public string? InlineText { get; }
+
+        public bool IsFromLibrary => InlineText != null;
 
         public string FileName { get; }
 
@@ -69,6 +91,24 @@ namespace FlipPix.UI.Models
         [NotifyPropertyChangedFor(nameof(StatusText))]
         private int _clipCount;
 
+        /// <summary>The story's text hash once a tab that files prompts by story has read it (⚡ H3 Express),
+        /// or empty. Filled in the background after a scan — see <c>StoryPromptStore.HashStory</c>.</summary>
+        [ObservableProperty]
+        private string _storyHash = string.Empty;
+
+        /// <summary>How many clip prompts are saved for this story — nonzero means it renders without the
+        /// clip writer.</summary>
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(HasSavedPrompts))]
+        [NotifyPropertyChangedFor(nameof(SavedPromptsTip))]
+        private int _savedClipCount;
+
+        public bool HasSavedPrompts => SavedClipCount > 0;
+
+        public string SavedPromptsTip =>
+            $"{SavedClipCount} clip prompt{(SavedClipCount == 1 ? string.Empty : "s")} saved for this story — it " +
+            "renders from them without running the clip writer. Click to open them.";
+
         public bool IsWaiting => State == BatchStoryState.Waiting;
         public bool IsProcessing => State == BatchStoryState.Processing;
         public bool IsDone => State == BatchStoryState.Done;
@@ -85,7 +125,7 @@ namespace FlipPix.UI.Models
                 var detail = Detail.Length > 0 ? $" · {Detail}" : string.Empty;
                 return State switch
                 {
-                    BatchStoryState.Waiting => "waiting",
+                    BatchStoryState.Waiting => IsFromLibrary ? "waiting · saved story" : "waiting",
                     BatchStoryState.Processing => "processing" + clips + detail,
                     BatchStoryState.Done => "done" + clips + took,
                     BatchStoryState.Failed => "failed" + detail,

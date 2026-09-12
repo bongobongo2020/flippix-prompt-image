@@ -223,6 +223,22 @@ public class ComfyUISettings
     // An optional LoRA from loras/H3, spliced onto whichever checkpoint the tab samples. Empty is none.
     public string H3ExpressLora { get; set; } = string.Empty;
     public double H3ExpressLoraStrength { get; set; } = 1.0;
+    // A story whose clip prompts were saved on an earlier run renders from them instead of the clip writer.
+    public bool H3ExpressReuseSavedPrompts { get; set; } = true;
+    // Saved stories added to the STORIES list from 📚 Story prompts (by story hash), put back on the next launch.
+    public List<string> H3ExpressLibraryStories { get; set; } = new();
+    // The run's own cast: a photo per character replaces the portrait the story would otherwise get. Outfit
+    // is what the photo shows, read by the vision model; OutfitSource is the photo it was read from.
+    public string H3ExpressCast1Photo { get; set; } = string.Empty;
+    public string H3ExpressCast1Sex { get; set; } = "Male";
+    public string H3ExpressCast1Outfit { get; set; } = string.Empty;
+    public string H3ExpressCast1OutfitSource { get; set; } = string.Empty;
+    public string H3ExpressCast2Photo { get; set; } = string.Empty;
+    public string H3ExpressCast2Sex { get; set; } = "Female";
+    public string H3ExpressCast2Outfit { get; set; } = string.Empty;
+    public string H3ExpressCast2OutfitSource { get; set; } = string.Empty;
+    // Off: the cast wears the story's saved wardrobe. On: their own clothes, and saved clips are re-dressed.
+    public bool H3ExpressCastOwnClothes { get; set; }
 
     // Seed Upscale tab: the folder its scan starts in. Empty means "the H3 4-Step output folder", which is
     // where the drafts it upscales are written.

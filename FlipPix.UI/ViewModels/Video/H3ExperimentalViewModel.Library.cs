@@ -48,8 +48,9 @@ namespace FlipPix.UI.ViewModels.Video
         /// <summary>Set while a recall is putting a saved take back on the form. The video-time setter
         /// arms the automatic writer run (see <see cref="OnLengthSecondsChanged"/>), and restoring a
         /// take's length would otherwise start a fresh chain two seconds later that overwrites the one
-        /// just recalled.</summary>
-        private bool _restoringChain;
+        /// just recalled. Protected for ⚡ H3 Express, which sets the length a saved story was written at
+        /// around its queue-add for the same reason.</summary>
+        protected bool _restoringChain;
 
         public RelayCommand OpenChainLibraryCommand { get; }
         public RelayCommand SaveChainCommand { get; }
@@ -358,7 +359,7 @@ namespace FlipPix.UI.ViewModels.Video
         /// <c>selectiveCast: false</c> mirrors what the writer does on this tab — both fighters are on
         /// screen throughout a two-hander, and clipping either one's references is what renders a fighter
         /// against a duplicate of themselves.</summary>
-        private string StampChain(string? chain) =>
+        protected string StampChain(string? chain) =>
             JoinClips(SplitClips(chain)
                 .Select(c => CastPromptStamp.Apply(c, Panels1, Panels2, CastWardrobe,
                                                    selectiveCast: false, CastDescriptor))

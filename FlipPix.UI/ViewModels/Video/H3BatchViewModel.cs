@@ -306,12 +306,34 @@ namespace FlipPix.UI.ViewModels.Video
 
         public bool HasStories => _stories.Count > 0;
 
-        public string FolderSummary =>
-            !HasFolder
-                ? "No folder chosen. Pick one holding your story .txt files."
-                : $"{BatchFolder} — {_stories.Count} story file(s) " +
-                  $"({_stories.Count(s => s.IsWaiting)} waiting, {_stories.Count(s => s.IsDone)} done" +
-                  (_stories.Any(s => s.IsFailed) ? $", {_stories.Count(s => s.IsFailed)} failed" : string.Empty) + ").";
+        public string FolderSummary
+        {
+            get
+            {
+                var saved = _stories.Count(s => s.IsFromLibrary);
+                var savedNote = saved == 0 ? string.Empty
+                    : $" {saved} saved stor{(saved == 1 ? "y" : "ies")} added from the story prompts.";
+                if (!HasFolder)
+                    return saved == 0
+                        ? "No folder chosen. Pick one holding your story .txt files."
+                        : $"No folder chosen —{savedNote} {_stories.Count(s => s.IsWaiting)} waiting.";
+                return $"{BatchFolder} — {_stories.Count} story file(s) " +
+                       $"({_stories.Count(s => s.IsWaiting)} waiting, {_stories.Count(s => s.IsDone)} done" +
+                       (_stories.Any(s => s.IsFailed) ? $", {_stories.Count(s => s.IsFailed)} failed" : string.Empty) +
+                       ")." + savedNote;
+            }
+        }
+
+        /// <summary>Puts a story on the list that the folder scan did not find — a saved story added from
+        /// ⚡ H3 Express's 📚 Story prompts. It goes to the end, and a run already under way does not pick it up:
+        /// that run's list was fixed when it started.</summary>
+        protected void AddStory(BatchStory story)
+        {
+            _stories.Add(story);
+            OnPropertyChanged(nameof(HasStories));
+            OnPropertyChanged(nameof(FolderSummary));
+            OnCanExecuteChanged();
+        }
 
         public bool IsBatchRunning
         {
@@ -577,7 +599,7 @@ namespace FlipPix.UI.ViewModels.Video
             var keep = new HashSet<string>(found, StringComparer.OrdinalIgnoreCase);
 
             for (var i = _stories.Count - 1; i >= 0; i--)
-                if (!keep.Contains(_stories[i].FilePath) && !_stories[i].IsDone)
+                if (!keep.Contains(_stories[i].FilePath) && !_stories[i].IsDone && !_stories[i].IsFromLibrary)
                     _stories.RemoveAt(i);
 
             var added = 0;
@@ -596,7 +618,13 @@ namespace FlipPix.UI.ViewModels.Video
                 AddLog($"{TabDisplayName}: no .txt, .md or .text files in {BatchFolder}.");
             else if (added > 0)
                 AddLog($"{TabDisplayName}: {added} story file(s) added — {_stories.Count(s => s.IsWaiting)} waiting.");
+
+            OnStoriesRescanned();
         }
+
+        /// <summary>After every scan of the folder, with the list up to date. A no-op here; ⚡ H3 Express
+        /// reads each story in the background to mark the ones it has saved prompts for.</summary>
+        protected virtual void OnStoriesRescanned() { }
 
         private void RemoveStory(BatchStory? story)
         {
@@ -676,7 +704,7 @@ namespace FlipPix.UI.ViewModels.Video
 
                     try
                     {
-                        var text = (await File.ReadAllTextAsync(story.FilePath, token)).Trim();
+                        var text = (story.InlineText ?? await File.ReadAllTextAsync(story.FilePath, token)).Trim();
                         if (text.Length == 0)
                         {
                             story.State = BatchStoryState.Skipped;
@@ -785,9 +813,14 @@ namespace FlipPix.UI.ViewModels.Video
                 ClearDerivedCastCommand.Execute(null);
                 Prompt = string.Empty;
                 StoryText = string.Empty;
+                OnStoryReset();
                 OnCanExecuteChanged();
             });
         }
+
+        /// <summary>Called on the UI thread at the end of the clean slate, before the next story is loaded. A
+        /// no-op here; ⚡ H3 Express puts the run's own cast photos back on the cards.</summary>
+        protected virtual void OnStoryReset() { }
 
         protected override void OnCanExecuteChanged()
         {

@@ -7886,6 +7886,99 @@
                         <Grid x:Name="H3ExpressRoot" DataContext="{Binding H3ExpressVM}" Style="{StaticResource TabPageStyle}">
                             <Grid.Resources>
                                 <SolidColorBrush x:Key="TabAccentBrush" Color="{StaticResource AccentVioletColor}"/>
+
+                                <!-- One CAST slot: the photo is the button; ✕ clears it; the sex is under it. -->
+                                <DataTemplate x:Key="ExpressCastMemberTemplate">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding Heading}" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="{Binding Tag}" FontSize="9" FontFamily="Consolas"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource TextMutedBrush}"/>
+                                        </Grid>
+                                        <Grid>
+                                            <Button Command="{Binding BrowseCommand}" Height="124" Cursor="Hand"
+                                                    ToolTip="The person who plays this part in every story of the run. Click to choose or change the photo.">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="Bd" CornerRadius="6" BorderThickness="1" ClipToBounds="True"
+                                                                BorderBrush="{StaticResource BorderBrush}"
+                                                                Background="{StaticResource SurfaceAltBrush}">
+                                                            <ContentPresenter/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TabAccentBrush}"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsEnabled" Value="False">
+                                                                <Setter TargetName="Bd" Property="Opacity" Value="0.6"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                                <Grid>
+                                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding HasPhoto}" Value="False">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+                                                        <TextBlock Text="＋" FontSize="22" HorizontalAlignment="Center"
+                                                                   Foreground="{DynamicResource TabAccentBrush}"/>
+                                                        <TextBlock Text="Add photo" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <TextBlock Text="empty: cast from the story" FontSize="9" HorizontalAlignment="Center" Margin="0,2,0,0"
+                                                                   Foreground="{StaticResource TextMutedBrush}"/>
+                                                    </StackPanel>
+                                                    <Image Source="{Binding Preview}" Stretch="UniformToFill"/>
+                                                </Grid>
+                                            </Button>
+                                            <Button Content="&#x2715;" Command="{Binding ClearCommand}"
+                                                    Width="22" Height="22" Margin="0,5,5,0" FontSize="10" Cursor="Hand"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                    Visibility="{Binding HasPhoto, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                    ToolTip="Remove this photo — the part is cast from each story again.">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border CornerRadius="11" Background="{StaticResource ScrimBrush}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                              TextElement.Foreground="{StaticResource PlayerTextBrush}"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+                                        <ComboBox ItemsSource="{Binding SexOptions}" SelectedItem="{Binding Sex, Mode=TwoWay}"
+                                                  Height="26" FontSize="11" Margin="0,6,0,0"
+                                                  ToolTip="Who is in the photo. The saved clips call each character he or she, so this should match the story's character — swap the photos if it does not."/>
+                                    </StackPanel>
+                                </DataTemplate>
+
+                                <!-- What one photographed person wears, for the own-clothes mode. -->
+                                <DataTemplate x:Key="ExpressCastOutfitTemplate">
+                                    <StackPanel Margin="0,8,0,0">
+                                        <Grid Margin="0,0,0,3">
+                                            <TextBlock Text="{Binding Heading, StringFormat={}{0} wears}" FontSize="10"
+                                                       VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                            <Button Content="👁 Read from photo" Command="{Binding ReadOutfitCommand}"
+                                                    HorizontalAlignment="Right" Height="22" Padding="8,0" FontSize="10"
+                                                    Style="{StaticResource AccentOutlineButtonStyle}"
+                                                    ToolTip="Ask the vision model what this person is wearing in the photo. You can also just type it."/>
+                                        </Grid>
+                                        <TextBox Text="{Binding Outfit}" TextWrapping="Wrap" AcceptsReturn="False"
+                                                 MinHeight="40" FontSize="11" Padding="6,4"
+                                                 ToolTip="One sentence naming every garment with its colour and material. Locked into every clip and used to build this person's character sheet."/>
+                                        <TextBlock Text="Reading the photo…" FontSize="10" Margin="0,3,0,0"
+                                                   Foreground="{DynamicResource TabAccentBrush}"
+                                                   Visibility="{Binding IsReadingOutfit, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                    </StackPanel>
+                                </DataTemplate>
                             </Grid.Resources>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="340"/>
@@ -7916,11 +8009,24 @@
                                                         <ColumnDefinition Width="Auto"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <Button Grid.Column="0" Content="Choose folder…"
-                                                            Command="{Binding PickFolderCommand}"
-                                                            Height="30" FontSize="11" Margin="0,0,4,0"
-                                                            Style="{StaticResource SecondaryButtonStyle}"
-                                                            ToolTip="The folder of story files. Every .txt, .md or .text in it becomes one film, in name order. Sub-folders are not searched."/>
+                                                    <Grid Grid.Column="0" Margin="0,0,4,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="4"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Button Grid.Column="0" Content="Choose folder…"
+                                                                Command="{Binding PickFolderCommand}"
+                                                                Height="30" FontSize="11"
+                                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                                ToolTip="The folder of story files. Every .txt, .md or .text in it becomes one film, in name order. Sub-folders are not searched."/>
+                                                        <!-- Saved stories: pick one in the window and press ➕ Add to stories list. -->
+                                                        <Button Grid.Column="2" Content="📚 Add saved…"
+                                                                Command="{Binding OpenStoryPromptsCommand}"
+                                                                Height="30" FontSize="11" Padding="6,0"
+                                                                Style="{StaticResource AccentOutlineButtonStyle}"
+                                                                ToolTip="Add stories whose clip prompts are already saved — from any folder, or imported from the other H3 tabs. Opens 📚 Story prompts: pick a story and press ➕ Add to stories list (or ➕ Add all). It renders like a story from the folder, with the CAST card."/>
+                                                    </Grid>
                                                     <Button Grid.Column="1" Content="&#x27F3;" Width="30" Height="30" FontSize="13"
                                                             Command="{Binding RescanCommand}" Margin="0,0,4,0"
                                                             Background="{StaticResource SurfaceAltBrush}" Foreground="{DynamicResource TabAccentBrush}"
@@ -7949,6 +8055,7 @@
                                                                         <Grid.ColumnDefinitions>
                                                                             <ColumnDefinition Width="Auto"/>
                                                                             <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="Auto"/>
                                                                             <ColumnDefinition Width="Auto"/>
                                                                             <ColumnDefinition Width="Auto"/>
                                                                         </Grid.ColumnDefinitions>
@@ -7993,14 +8100,24 @@
                                                                                 </TextBlock.Style>
                                                                             </TextBlock>
                                                                         </StackPanel>
-                                                                        <Button Grid.Column="2" Content="▶" Width="26" Height="22" Padding="0" FontSize="9"
+                                                                        <!-- 📚 n: this story's clip prompts are saved, so it skips the writer. -->
+                                                                        <Button Grid.Column="2" Height="22" Padding="5,0" FontSize="9"
+                                                                                Margin="6,0,0,0" VerticalAlignment="Top"
+                                                                                Style="{StaticResource AccentOutlineButtonStyle}"
+                                                                                Command="{Binding DataContext.OpenStoryPromptsCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                Visibility="{Binding HasSavedPrompts, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                                ToolTip="{Binding SavedPromptsTip}">
+                                                                            <TextBlock Text="{Binding SavedClipCount, StringFormat={}📚 {0}}" FontSize="9"/>
+                                                                        </Button>
+                                                                        <Button Grid.Column="3" Content="▶" Width="26" Height="22" Padding="0" FontSize="9"
                                                                                 Margin="6,0,2,0" VerticalAlignment="Top"
                                                                                 Style="{StaticResource AccentOutlineButtonStyle}"
                                                                                 Command="{Binding DataContext.PlayStoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                                 CommandParameter="{Binding}"
                                                                                 Visibility="{Binding HasOutput, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                                                 ToolTip="Play this story's joined film."/>
-                                                                        <Button Grid.Column="3" Content="&#x2715;" Width="20" Height="22" FontSize="10"
+                                                                        <Button Grid.Column="4" Content="&#x2715;" Width="20" Height="22" FontSize="10"
                                                                                 VerticalAlignment="Top" Background="Transparent" BorderThickness="0"
                                                                                 Foreground="{StaticResource TextMutedBrush}"
                                                                                 Command="{Binding DataContext.RemoveStoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
@@ -8012,6 +8129,53 @@
                                                         </ItemsControl>
                                                     </ScrollViewer>
                                                 </Border>
+
+                                                <!-- The saved clip prompts, per story: read, edit, forget. -->
+                                                <Button Content="{Binding StoryPromptsButtonText}"
+                                                        Command="{Binding OpenStoryPromptsCommand}"
+                                                        Height="32" Margin="0,10,0,0" FontSize="12"
+                                                        Style="{StaticResource AccentOutlineButtonStyle}"
+                                                        ToolTip="Every story's written clip prompts, saved under the story they came from. Read them, edit any clip, or forget a story so its next render writes them again."/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- ─── Cast: the run's own people ──────────────────────── -->
+                                        <Border Style="{StaticResource SectionCardStyle}">
+                                            <StackPanel IsEnabled="{Binding CanEditCast}">
+                                                <ctrl:SectionHeader Title="CAST" Note="  · optional · your people in every story" Margin="0,0,0,8"/>
+
+                                                <Grid Margin="0,0,0,10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="10"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <ContentControl Grid.Column="0" Content="{Binding CastMember1}"
+                                                                    ContentTemplate="{StaticResource ExpressCastMemberTemplate}"/>
+                                                    <ContentControl Grid.Column="2" Content="{Binding CastMember2}"
+                                                                    ContentTemplate="{StaticResource ExpressCastMemberTemplate}"/>
+                                                </Grid>
+
+                                                <TextBlock Text="What they wear" FontSize="10" Margin="0,0,0,4"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                <RadioButton Content="👗 The story's saved wardrobe" GroupName="ExpressCastClothes"
+                                                             IsChecked="{Binding CastStoryWardrobe, Mode=TwoWay}"
+                                                             FontSize="11" Margin="0,0,0,3" Foreground="{StaticResource TextPrimaryBrush}"
+                                                             ToolTip="Your people in each story's own outfits. The character sheets re-dress them; saved clips are used word for word. No extra LLM calls."/>
+                                                <RadioButton Content="👕 Their own clothes" GroupName="ExpressCastClothes"
+                                                             IsChecked="{Binding CastOwnClothes, Mode=TwoWay}"
+                                                             FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"
+                                                             ToolTip="Your people in what they wear in their photos. A saved story's clips get a clothing-only rewrite (one short LLM call per clip), kept for next time."/>
+
+                                                <StackPanel Visibility="{Binding CastOwnClothes, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <ContentControl Content="{Binding CastMember1}" ContentTemplate="{StaticResource ExpressCastOutfitTemplate}"
+                                                                    Visibility="{Binding CastMember1.HasPhoto, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                    <ContentControl Content="{Binding CastMember2}" ContentTemplate="{StaticResource ExpressCastOutfitTemplate}"
+                                                                    Visibility="{Binding CastMember2.HasPhoto, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                </StackPanel>
+
+                                                <TextBlock Text="{Binding ExpressCastSummary}" FontSize="10" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                           Foreground="{StaticResource TextMutedBrush}"/>
                                             </StackPanel>
                                         </Border>
 
@@ -8033,6 +8197,13 @@
                                                           Foreground="{StaticResource TextPrimaryBrush}"
                                                           ToolTip="Write the clips with the build taken from the MiniMax-H3 guides: 3-5 shots per clip on explicit cut times, medium-or-closer framing, silence mandates, isolated speakers, screen sides, a lighting lock and voices kept out of the soundscape. Untick for the shipped writer."/>
                                                 <TextBlock Text="{Binding PromptBuildSummary}" FontSize="10" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextMutedBrush}" Margin="20,0,0,10"/>
+
+                                                <CheckBox Content="♻️ Reuse saved prompts" IsChecked="{Binding ReuseSavedPrompts}"
+                                                          FontSize="11" FontWeight="SemiBold" Margin="0,0,0,2"
+                                                          Foreground="{StaticResource TextPrimaryBrush}"
+                                                          ToolTip="A story whose clip prompts were written on an earlier run renders from them — no clip writer — at the clip length they were written for, in the wardrobe they describe. Untick to write every story's clips again; the new set replaces the saved one, which is kept in history."/>
+                                                <TextBlock Text="{Binding ReuseSavedPromptsSummary}" FontSize="10" TextWrapping="Wrap"
                                                            Foreground="{StaticResource TextMutedBrush}" Margin="20,0,0,12"/>
 
                                                 <TextBlock Text="Aspect ratio" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
@@ -8256,8 +8427,15 @@
                                     </Grid>
                                 </Border>
 
-                                <!-- ─── The player ─────────────────────────────────────────── -->
-                                <Border Grid.Row="1" Margin="16,14,16,10" Background="{StaticResource SurfaceBrush}"
+                                <!-- ─── The player, and the open clip's prompt beside it ─────── -->
+                                <!-- Side by side on purpose: stacked under the player, the editor took the player's
+                                     height and was drawn over it. -->
+                                <Grid Grid.Row="1" Margin="16,14,16,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" MinWidth="260"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Background="{StaticResource SurfaceBrush}"
                                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
                                     <Grid>
                                         <Grid.RowDefinitions>
@@ -8344,16 +8522,120 @@
                                     </Grid>
                                 </Border>
 
+                                <!-- ─── The selected clip's prompt, editable, and its regenerate ─── -->
+                                <Border Grid.Column="1" Width="420" Margin="12,0,0,0" Padding="12" CornerRadius="8"
+                                        Background="{StaticResource SurfaceBrush}"
+                                        BorderBrush="{DynamicResource TabAccentBrush}" BorderThickness="1"
+                                        Visibility="{Binding HasSelectedClip, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <Grid Grid.Row="0" Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="{Binding SelectedClipHeader}" FontSize="12" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                <TextBlock Text="{Binding SelectedClipStatus}" FontSize="10" Margin="0,2,0,0"
+                                                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextMutedBrush}"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="&#x2715;" Command="{Binding CloseClipEditorCommand}"
+                                                    Width="24" Height="24" FontSize="11" VerticalAlignment="Top"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Foreground="{StaticResource TextMutedBrush}"
+                                                    ToolTip="Close the prompt. An edit that was not regenerated or saved is dropped."/>
+                                        </Grid>
+
+                                        <TextBox Grid.Row="1" Text="{Binding ClipPromptDraft, UpdateSourceTrigger=PropertyChanged}"
+                                                 IsReadOnly="{Binding SelectedClip.IsBusy}"
+                                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                                                 MinHeight="120"
+                                                 FontFamily="Consolas" FontSize="11" Padding="6,4"
+                                                 Background="{StaticResource SurfaceAltBrush}"
+                                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                                 BorderBrush="{StaticResource BorderBrush}"
+                                                 ToolTip="The full prompt this clip was rendered from. Edit it, then Regenerate or Save to story."/>
+                                        <TextBlock Grid.Row="2" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,8"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   Text="Exactly what the clip was rendered from. @char tags become &lt;Picture N&gt; references when it renders. Regenerating an edited clip also saves it to the story's prompts."/>
+
+                                        <StackPanel Grid.Row="3">
+                                            <WrapPanel Margin="0,0,0,6">
+                                                <CheckBox Content="🎲 New seed" IsChecked="{Binding RegenerateWithNewSeed}"
+                                                          VerticalAlignment="Center" FontSize="11" Margin="0,0,10,6"
+                                                          Foreground="{StaticResource TextPrimaryBrush}"
+                                                          ToolTip="Off: the clip keeps its seed, so the new render changes only where the prompt does. On: a new seed — a different take of the same prompt."/>
+                                                <Button Content="💾 Save to story" Command="{Binding SaveClipToStoryCommand}"
+                                                        Height="28" Padding="10,0" FontSize="11" Margin="0,0,6,6"
+                                                        Style="{StaticResource AccentOutlineButtonStyle}"
+                                                        ToolTip="{Binding SaveClipToStoryTip}" ToolTipService.ShowOnDisabled="True"/>
+                                                <Button Content="↺ Revert" Command="{Binding RevertClipPromptCommand}"
+                                                        Height="28" Padding="10,0" FontSize="11" Margin="0,0,6,6"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        ToolTip="Put the box back to the prompt the clip was rendered from."/>
+                                                <Button Content="Unqueue" Command="{Binding UnqueueClipCommand}"
+                                                        Height="28" Padding="10,0" FontSize="11" Margin="0,0,6,6"
+                                                        ToolTip="Take this clip's waiting regenerate back out of the queue.">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SelectedClip.IsRerollQueued}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                                <!-- Stops a regenerate run on its own. During a batch the Stop at the
+                                                     top is the one to use: this would cut the story, not the run. -->
+                                                <Button Content="&#x2715; Stop" Command="{Binding CancelCommand}"
+                                                        Height="28" Padding="10,0" FontSize="11" Margin="0,0,6,6"
+                                                        ToolTip="Stop the regenerate. The clip is left as it was.">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding SelectedClip.IsBusy}" Value="True"/>
+                                                                        <Condition Binding="{Binding IsBatchRunning}" Value="False"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </WrapPanel>
+                                            <Button Content="{Binding RegenerateButtonText}"
+                                                    Command="{Binding RegenerateClipCommand}"
+                                                    ToolTip="{Binding RegenerateTip}" ToolTipService.ShowOnDisabled="True"
+                                                    Height="32" FontSize="12" HorizontalAlignment="Stretch"
+                                                    Style="{StaticResource AccentButtonStyle}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                </Grid>
+
                                 <!-- ─── Clip chips for the story in flight ─────────────────── -->
                                 <Border Grid.Row="2" Style="{StaticResource SectionCardStyle}" Margin="16,0,16,10" Padding="12,10"
                                         Visibility="{Binding HasBoard, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <StackPanel>
                                         <Grid Margin="0,0,0,8">
-                                            <ctrl:SectionHeader Title="CLIPS" Note="  · click a clip to see, edit and regenerate its prompt" HorizontalAlignment="Left"/>
+                                            <ctrl:SectionHeader Title="CLIPS" Note="  · click a clip to play it · 📝 under it opens its prompt" HorizontalAlignment="Left"/>
                                             <TextBlock Text="{Binding ClipProgressText}" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                        FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TabAccentBrush}"/>
                                         </Grid>
-                                        <ScrollViewer MaxHeight="116" VerticalScrollBarVisibility="Auto">
+                                        <ScrollViewer MaxHeight="170" VerticalScrollBarVisibility="Auto">
                                             <ItemsControl ItemsSource="{Binding HuntBoard}">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
@@ -8364,9 +8646,9 @@
                                                     <DataTemplate>
                                                         <!-- Reaches the tab through the ItemsControl's DataContext;
                                                              ElementName does not resolve from inside a DataTemplate. -->
-                                                        <Button Command="{Binding DataContext.SelectClipCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                                CommandParameter="{Binding}" ToolTip="{Binding Summary}"
-                                                                Margin="0,0,6,6">
+                                                        <StackPanel Margin="0,0,6,6">
+                                                        <Button Command="{Binding DataContext.PlayClipCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" ToolTip="{Binding Summary}">
                                                             <Button.Style>
                                                                 <Style TargetType="Button">
                                                                     <Setter Property="Cursor" Value="Hand"/>
@@ -8401,11 +8683,6 @@
                                                                             <DataTrigger Binding="{Binding IsBusy}" Value="True">
                                                                                 <Setter Property="Background" Value="{DynamicResource TabAccentBrush}"/>
                                                                                 <Setter Property="BorderBrush" Value="{DynamicResource TabAccentBrush}"/>
-                                                                            </DataTrigger>
-                                                                            <!-- The clip the editor below is showing. -->
-                                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                                <Setter Property="BorderBrush" Value="{DynamicResource TabAccentBrush}"/>
-                                                                                <Setter Property="BorderThickness" Value="2"/>
                                                                             </DataTrigger>
                                                                         </Style.Triggers>
                                                                     </Style>
@@ -8460,107 +8737,42 @@
                                                                 </StackPanel>
                                                             </Border>
                                                         </Button>
+                                                        <!-- The prompt, beside the player. Filled while it is the one open. -->
+                                                        <Button Command="{Binding DataContext.SelectClipCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                CommandParameter="{Binding}" Width="58" Height="20" Margin="0,3,0,0"
+                                                                ToolTip="Open this clip's prompt beside the player — read it, edit it, regenerate the clip.">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button">
+                                                                    <Setter Property="Cursor" Value="Hand"/>
+                                                                    <Setter Property="Foreground" Value="{DynamicResource TabAccentBrush}"/>
+                                                                    <Setter Property="Background" Value="Transparent"/>
+                                                                    <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4"
+                                                                                        BorderBrush="{DynamicResource TabAccentBrush}" BorderThickness="1">
+                                                                                    <TextBlock Text="📝 prompt" FontSize="9" FontWeight="SemiBold"
+                                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                                               Foreground="{TemplateBinding Foreground}"/>
+                                                                                </Border>
+                                                                            </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                            <Setter Property="Background" Value="{DynamicResource TabAccentBrush}"/>
+                                                                            <Setter Property="Foreground" Value="White"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                        </StackPanel>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                         </ScrollViewer>
 
-                                        <!-- ─── The selected clip's prompt, editable, and its regenerate ─── -->
-                                        <Border Margin="0,4,0,0" Padding="10" CornerRadius="6"
-                                                Background="{StaticResource SurfaceAltBrush}"
-                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                                Visibility="{Binding HasSelectedClip, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <StackPanel>
-                                                <Grid Margin="0,0,0,6">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="{Binding SelectedClipHeader}" FontSize="12" FontWeight="SemiBold"
-                                                                   TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                                        <TextBlock Text="{Binding SelectedClipStatus}" FontSize="10" Margin="0,2,0,0"
-                                                                   TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextMutedBrush}"/>
-                                                    </StackPanel>
-                                                    <Button Grid.Column="1" Content="&#x2715;" Command="{Binding CloseClipEditorCommand}"
-                                                            Width="22" Height="22" FontSize="10" VerticalAlignment="Top"
-                                                            Background="Transparent" BorderThickness="0"
-                                                            Foreground="{StaticResource TextMutedBrush}"
-                                                            ToolTip="Close the prompt. An edit that was not regenerated is dropped."/>
-                                                </Grid>
-
-                                                <TextBox Text="{Binding ClipPromptDraft, UpdateSourceTrigger=PropertyChanged}"
-                                                         IsReadOnly="{Binding SelectedClip.IsBusy}"
-                                                         AcceptsReturn="True" TextWrapping="Wrap"
-                                                         VerticalScrollBarVisibility="Auto"
-                                                         MinHeight="90" MaxHeight="200"
-                                                         FontFamily="Consolas" FontSize="11" Padding="6,4"
-                                                         Background="{StaticResource SurfaceBrush}"
-                                                         Foreground="{StaticResource TextPrimaryBrush}"
-                                                         BorderBrush="{StaticResource BorderBrush}"
-                                                         ToolTip="The full prompt this clip was rendered from. Edit it, then Regenerate."/>
-                                                <TextBlock FontSize="10" TextWrapping="Wrap" Margin="0,4,0,8"
-                                                           Foreground="{StaticResource TextMutedBrush}"
-                                                           Text="Exactly what the clip was rendered from. @char tags become &lt;Picture N&gt; references when it renders."/>
-
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <CheckBox Grid.Column="0" Content="🎲 New seed" IsChecked="{Binding RegenerateWithNewSeed}"
-                                                              VerticalAlignment="Center" FontSize="11" Margin="0,0,8,0"
-                                                              Foreground="{StaticResource TextPrimaryBrush}"
-                                                              ToolTip="Off: the clip keeps its seed, so the new render changes only where the prompt does. On: a new seed — a different take of the same prompt."/>
-                                                    <Button Grid.Column="1" Content="↺ Revert" Command="{Binding RevertClipPromptCommand}"
-                                                            Height="30" Padding="10,0" FontSize="11" Margin="0,0,6,0"
-                                                            Style="{StaticResource SecondaryButtonStyle}"
-                                                            ToolTip="Put the box back to the prompt the clip was rendered from."/>
-                                                    <Button Grid.Column="2" Content="Unqueue" Command="{Binding UnqueueClipCommand}"
-                                                            Height="30" Padding="10,0" FontSize="11" Margin="0,0,6,0"
-                                                            ToolTip="Take this clip's waiting regenerate back out of the queue.">
-                                                        <Button.Style>
-                                                            <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding SelectedClip.IsRerollQueued}" Value="True">
-                                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Button.Style>
-                                                    </Button>
-                                                    <!-- Stops a regenerate run on its own. During a batch the Stop at the
-                                                         top is the one to use: this would cut the story, not the run. -->
-                                                    <Button Grid.Column="3" Content="&#x2715; Stop" Command="{Binding CancelCommand}"
-                                                            Height="30" Padding="10,0" FontSize="11" Margin="0,0,6,0"
-                                                            ToolTip="Stop the regenerate. The clip is left as it was.">
-                                                        <Button.Style>
-                                                            <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
-                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                                <Style.Triggers>
-                                                                    <MultiDataTrigger>
-                                                                        <MultiDataTrigger.Conditions>
-                                                                            <Condition Binding="{Binding SelectedClip.IsBusy}" Value="True"/>
-                                                                            <Condition Binding="{Binding IsBatchRunning}" Value="False"/>
-                                                                        </MultiDataTrigger.Conditions>
-                                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                                    </MultiDataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Button.Style>
-                                                    </Button>
-                                                    <Button Grid.Column="4" Content="{Binding RegenerateButtonText}"
-                                                            Command="{Binding RegenerateClipCommand}"
-                                                            ToolTip="{Binding RegenerateTip}" ToolTipService.ShowOnDisabled="True"
-                                                            Height="30" Padding="14,0" FontSize="12"
-                                                            Style="{StaticResource AccentButtonStyle}"/>
-                                                </Grid>
-                                            </StackPanel>
-                                        </Border>
                                     </StackPanel>
                                 </Border>
 

@@ -697,6 +697,40 @@ namespace FlipPix.UI.ViewModels.Video
             }
         }
 
+        /// <summary>
+        /// For every loaded character whose sheet does not show the locked wardrobe, takes back a sheet already
+        /// built from the same photograph <i>in that same outfit</i>, if the library has one. For a run that
+        /// puts the same photographs on the cards story after story, it is what stops each story paying Qwen
+        /// for a sheet an earlier story already built. A sheet in any other outfit is not taken — it would only
+        /// be rebuilt.
+        /// </summary>
+        protected async Task AdoptSheetsInWardrobeAsync()
+        {
+            if (!ReuseSheetsFromLibrary) return;
+            foreach (var slot in LoadedCharacters.Where(c => !c.UseSourceAsSheet && !c.SheetMatchesWardrobe).ToList())
+            {
+                var outfit = CastPromptStamp.OutfitFor(CastWardrobe, slot.Index);
+                if (outfit.Length == 0) continue;
+                var source = slot.SourcePath;
+                try
+                {
+                    var library = SheetLibrary;
+                    if (_sheetLibrarySync != null) await _sheetLibrarySync;
+                    var match = await library.FindAsync(source, wardrobe: outfit);
+                    if (match == null || !string.Equals(slot.SourcePath, source, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    slot.SetSheet(match.SheetPath, match.Entry.Wardrobe);
+                    OnCharacterChanged();
+                    AddLog($"Character {slot.Index}: reusing the sheet already built from this photo in this outfit " +
+                           $"({Path.GetFileName(match.SheetPath)}) — no Qwen pass needed.");
+                }
+                catch (Exception ex)
+                {
+                    AddLog($"Character {slot.Index}: the sheet library could not be checked ({ex.Message}).");
+                }
+            }
+        }
+
         /// <summary>True while the sheet builder is waiting for the GPU or generating. Its own flag, kept
         /// apart from <see cref="VideoProcessingBaseViewModel.IsProcessing"/> so the two can overlap without
         /// fighting over the progress bar a render owns.</summary>
@@ -2963,6 +2997,11 @@ namespace FlipPix.UI.ViewModels.Video
         // ── 🍀 I'm Feeling Lucky ────────────────────────────────────────────────────────────────────
 
         private CancellationTokenSource? _luckyCts;
+
+        /// <summary>The token ✕ Cancel trips for 🍀's run, or none outside one — for a step a fork adds inside
+        /// the run that has to stop with it.</summary>
+        protected CancellationToken LuckyToken => _luckyCts?.Token ?? CancellationToken.None;
+
         private bool _isFeelingLucky;
         private string _luckyPhase = string.Empty;
 
@@ -2986,7 +3025,7 @@ namespace FlipPix.UI.ViewModels.Video
         public string LuckyPhase
         {
             get => _luckyPhase;
-            private set { if (_luckyPhase == value) return; _luckyPhase = value; OnPropertyChanged(); }
+            protected set { if (_luckyPhase == value) return; _luckyPhase = value; OnPropertyChanged(); }
         }
 
         public string LuckyButtonText => IsFeelingLucky ? "🍀 Running…" : "🍀 I'm Feeling Lucky";
@@ -3003,6 +3042,28 @@ namespace FlipPix.UI.ViewModels.Video
         /// this and turns them on.
         /// </summary>
         protected virtual void PrepareForUnattendedRun() { }
+
+        /// <summary>
+        /// Called by 🍀 between reading the cast and deciding the wardrobe. A no-op here. ⚡ H3 Express
+        /// overrides it to look the story up among its saved prompts and, when it is there, put back the
+        /// wardrobe those prompts were written in (<see cref="AdoptWardrobe"/>) — it has to happen before the
+        /// portraits and sheets, which are generated wearing it.
+        /// </summary>
+        protected virtual Task OnLuckyCastReadAsync(CancellationToken token) => Task.CompletedTask;
+
+        /// <summary>
+        /// Locks a wardrobe that is already known rather than deriving one, recorded as written from the story
+        /// and cast on the form right now — so neither the debounce nor <see cref="EnsureWardrobeAsync"/> sees
+        /// anything to re-dress. A character it has no line for is still topped up by the next wardrobe pass.
+        /// </summary>
+        protected void AdoptWardrobe(string wardrobe)
+        {
+            if (string.IsNullOrWhiteSpace(wardrobe)) return;
+            _wardrobeCts?.Cancel();
+            _wardrobeCts = null;
+            IsWardrobeLocked = true;
+            SetDerivedWardrobe(wardrobe.Trim(), WardrobeCast);
+        }
 
         /// <summary>
         /// The whole pipeline, once, from a story: read the cast out of it, dress them, photograph them,
@@ -3050,6 +3111,10 @@ namespace FlipPix.UI.ViewModels.Video
                            "Write a Part on it, or load a photo, and press 🍀 again.");
                     return;
                 }
+
+                // A tab that already knows this story can say so now, with the cast read and nobody dressed.
+                await OnLuckyCastReadAsync(token);
+                token.ThrowIfCancellationRequested();
 
                 // 2. What they wear. Before the photos, because the portrait is generated wearing it.
                 LuckyPhase = "2/6 · Deciding the wardrobe…";

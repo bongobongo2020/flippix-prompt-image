@@ -111,6 +111,7 @@ namespace FlipPix.UI.ViewModels.Video
         /// </summary>
         protected async Task DeriveCastNowAsync(CancellationToken token, bool quiet)
         {
+            LastDetectedCast = null;
             if (!SlotIsFree(_character1) && !SlotIsFree(_character2)) return;
 
             _isDerivingCast = true;
@@ -126,6 +127,7 @@ namespace FlipPix.UI.ViewModels.Video
                 token.ThrowIfCancellationRequested();
 
                 var detected = CastPhotoWorkflows.ParseCastLines(reply, CastSlots);
+                LastDetectedCast = detected.Count == 0 ? null : detected.Take(CastSlots).ToList();
                 if (detected.Count == 0)
                 {
                     AddLog("The cast could not be read out of the story — set the sex and Part on " +
@@ -142,6 +144,14 @@ namespace FlipPix.UI.ViewModels.Video
                 if (!IsWritingPrompt) IsAnalyzing = false;
             }
         }
+
+        /// <summary>
+        /// What the last cast pass read out of the story — kind and Part per character, in the story's own order —
+        /// whether or not it could write them onto the cards. A card with a photo keeps its sex, so this is the
+        /// only record of the sex the story gives that character; ⚡ H3 Express matches its photos to it.
+        /// Null when the pass did not run or read nothing.
+        /// </summary>
+        protected IReadOnlyList<(string Kind, string Role)>? LastDetectedCast { get; private set; }
 
         /// <summary>The kind and Part this pass last wrote into a slot, or nulls if it never wrote one.
         /// Split apart because the two are answerable separately: the user moving the sex dropdown on a

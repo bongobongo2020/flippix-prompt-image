@@ -37,7 +37,7 @@ namespace FlipPix.UI.ViewModels.Video
     /// settings slot; researched prompts are switched on at every launch, since that build is what this tab
     /// is for. There is no VR mode.</para>
     /// </summary>
-    public class H3ExpressViewModel : H3BatchViewModel
+    public partial class H3ExpressViewModel : H3BatchViewModel
     {
         /// <summary>The sampler branch every clip renders on. A finish needs a branch to keep; with no hunt,
         /// branch 1 is simply the one kept.</summary>
@@ -68,6 +68,7 @@ namespace FlipPix.UI.ViewModels.Video
 
             PlayStoryCommand = new RelayCommand<BatchStory>(PlayStory);
             SelectClipCommand = new RelayCommand<ErosHuntClip>(SelectClip);
+            PlayClipCommand = new RelayCommand<ErosHuntClip>(PlayClip, row => row?.OutputPath != null);
             CloseClipEditorCommand = new RelayCommand(() => SelectedClip = null);
             RegenerateClipCommand = new RelayCommand(RegenerateSelectedClip, () => CanRegenerateSelectedClip);
             RevertClipPromptCommand = new RelayCommand(
@@ -75,6 +76,9 @@ namespace FlipPix.UI.ViewModels.Video
                 () => IsClipPromptEdited);
             UnqueueClipCommand = new RelayCommand(UnqueueSelectedClip,
                                                   () => SelectedClip != null && IsQueued(SelectedClip));
+
+            InitStoryPrompts();
+            InitCast();
 
             // A story's clips leave the board when the next story starts. The editor and any regenerate
             // still waiting for one of them go with it.
@@ -582,18 +586,29 @@ namespace FlipPix.UI.ViewModels.Video
             IsBatchRunning && IsProcessingQueue && !row.IsBusy && !row.IsFinished && row.HasPick &&
             row.Item.ItemStatus == QueueItemStatus.Pending;
 
-        /// <summary>A chip click opens its prompt, and plays the clip when there is one to play. A second
-        /// click on the open clip shuts the editor.</summary>
+        /// <summary>The 📝 under a chip opens that clip's prompt beside the player; pressed again on the open
+        /// clip, it shuts the editor. It does not touch the player — the chip itself is what plays.</summary>
         private void SelectClip(ErosHuntClip? row)
         {
             if (row == null) return;
-            if (row == _selectedClip)
+            SelectedClip = row == _selectedClip ? null : row;
+        }
+
+        /// <summary>A click on the chip plays that clip, and nothing else. Pressed on the clip already in the
+        /// player, it starts it again from the top.</summary>
+        public RelayCommand<ErosHuntClip> PlayClipCommand { get; }
+
+        private void PlayClip(ErosHuntClip? row)
+        {
+            if (row?.OutputPath is not { } path) return;
+            if (string.Equals(ActivePreviewUri, path, StringComparison.OrdinalIgnoreCase))
             {
-                SelectedClip = null;
+                // The same source is not a change, so the window would not hear about it; it restarts a source it
+                // is told about again.
+                OnPropertyChanged(nameof(ActivePreviewUri));
                 return;
             }
-            SelectedClip = row;
-            if (row.OutputPath != null) ShowInPlayer(row.OutputPath, ClipCaption(row));
+            ShowInPlayer(path, ClipCaption(row));
         }
 
         private void SelectedClip_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) =>
@@ -607,6 +622,8 @@ namespace FlipPix.UI.ViewModels.Video
             OnPropertyChanged(nameof(RegenerateButtonText));
             OnPropertyChanged(nameof(RegenerateTip));
             RegenerateClipCommand?.NotifyCanExecuteChanged();
+            SaveClipToStoryCommand?.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(SaveClipToStoryTip));
             RevertClipPromptCommand?.NotifyCanExecuteChanged();
             UnqueueClipCommand?.NotifyCanExecuteChanged();
         }
@@ -615,6 +632,10 @@ namespace FlipPix.UI.ViewModels.Video
         {
             base.OnCanExecuteChanged();
             RaiseClipEditorState();
+            // A chip becomes playable when its clip lands, and every landing comes through here.
+            PlayClipCommand?.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(CanEditCast));
+            NotifyCastCommands();
         }
 
         private void RegenerateSelectedClip()
@@ -625,9 +646,11 @@ namespace FlipPix.UI.ViewModels.Video
 
             if (SweepWillRender(row))
             {
+                var edited = prompt != row.Item.Prompt;
                 ApplyPrompt(row, prompt, RegenerateWithNewSeed);
                 SaveQueueToFile();
                 AddLog($"{ClipCaption(row)}: prompt edited — it renders from the new one when the run reaches it.");
+                if (edited) _ = SaveClipToStoryAsync(row, prompt, manual: false);
                 RaiseClipEditorState();
                 return;
             }
@@ -777,6 +800,8 @@ namespace FlipPix.UI.ViewModels.Video
                 row.IsFinished = true;
                 row.Status = "finished · regenerated";
                 AddLog($"{ClipCaption(row)}: regenerated.");
+                // The prompt that made the file is the one the story keeps from now on.
+                if (reworded) _ = SaveClipToStoryAsync(row, item.Prompt, manual: false);
 
                 // Never throws. Joins only when every clip of the story is done, as after a run.
                 await CompleteStoryAsync(item, token);
@@ -868,6 +893,12 @@ namespace FlipPix.UI.ViewModels.Video
         private void OnBoardChanged()
         {
             if (_selectedClip != null && !HuntBoard.Contains(_selectedClip)) SelectedClip = null;
+            // An empty board belongs to no story; the next one's Analyze names its own.
+            if (HuntBoard.Count == 0)
+            {
+                _boardStoryHash = string.Empty;
+                _boardVariantKey = string.Empty;
+            }
 
             var gone = _regenerations.RemoveAll(r => !HuntBoard.Contains(r.Row));
             if (gone > 0)

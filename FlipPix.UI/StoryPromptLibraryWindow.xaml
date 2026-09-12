@@ -1,0 +1,515 @@
+<Window x:Class="FlipPix.UI.StoryPromptLibraryWindow"
+        Icon="flippix.ico"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ctrl="clr-namespace:FlipPix.UI.Controls"
+        mc:Ignorable="d"
+        Title="Story Prompts — H3 Express"
+        Height="780" Width="1180"
+        MinHeight="520" MinWidth="880"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBackgroundBrush}">
+
+    <!--
+        📚 Story Prompts. Left: every story ⚡ H3 Express has clip prompts saved for. Right: one story's
+        clips, each in its own editable card. Nothing is written until 💾 Save; leaving unsaved edits asks.
+        The view model is StoryPromptLibraryViewModel; this file holds no logic beyond the dialogs.
+    -->
+
+    <Window.InputBindings>
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveCommand}"/>
+    </Window.InputBindings>
+
+    <Window.Resources>
+        <!-- H3 Express's accent. -->
+        <SolidColorBrush x:Key="TabAccentBrush" Color="{StaticResource AccentVioletColor}"/>
+
+        <!-- Small square glyph buttons on a clip card: move, revert, remove. -->
+        <Style x:Key="GlyphButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="2,0,0,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TabAccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- A fact about the story, as a pill. -->
+        <Style x:Key="FactChipStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceAltBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="9,2"/>
+            <Setter Property="Margin" Value="0,0,6,6"/>
+        </Style>
+
+        <!-- The story list's rows: flat cards; the selected one gets the accent edge. -->
+        <Style x:Key="StoryItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Card" Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="4"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="Edge" Grid.Column="0" CornerRadius="8,0,0,8"
+                                        Background="{DynamicResource TabAccentBrush}" Visibility="Hidden"/>
+                                <ContentPresenter Grid.Column="1" Margin="10,10,12,10"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource BorderStrongBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource TabAccentBrush}"/>
+                                <Setter TargetName="Edge" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20,16,20,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340"/>
+            <ColumnDefinition Width="16"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ═══ Header ═══════════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="0" Grid.ColumnSpan="3" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="📚" FontSize="22" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="Story Prompts" FontSize="21" FontWeight="Bold" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0" MaxWidth="760" HorizontalAlignment="Left"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Text="The clip prompts written for each story, saved under the story itself. When ⚡ H3 Express loads a story it recognises, it renders from these and skips the clip writer. Edit any clip and save — the next render of that story uses your version."/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Command="{Binding ImportCommand}" Height="32" Padding="12,0" Margin="0,0,8,0"
+                        Style="{StaticResource AccentOutlineButtonStyle}"
+                        ToolTip="Adopt every story chain the other H3 tabs (Batch, Eros, Experimental, 4-Step and Express's own prompt library) have already written and filed. Stories already here, and stories you forgot on purpose, are left alone.">
+                    <Button.Content>
+                        <TextBlock>
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="⤓ Import from other H3 tabs"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsImporting}" Value="True">
+                                            <Setter Property="Text" Value="Importing…"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button.Content>
+                </Button>
+                <Button Content="📂" Command="{Binding OpenStoreFolderCommand}" Width="32" Height="32" Padding="0"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        ToolTip="Open the folder the story prompts are saved in. Each story is one .json file; replaced versions are kept in history."/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ═══ Left: the stories ════════════════════════════════════════════════ -->
+        <Grid Grid.Row="1" Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         Height="34" Padding="30,0,8,0" VerticalContentAlignment="Center" FontSize="12"
+                         ToolTip="Search titles, story text and the prompts themselves."/>
+                <TextBlock Text="🔍" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                           Foreground="{StaticResource TextMutedBrush}"/>
+                <TextBlock Text="Search stories and prompts…" FontSize="12" Margin="31,0,0,0" VerticalAlignment="Center"
+                           IsHitTestVisible="False" Foreground="{StaticResource TextMutedBrush}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="2,8,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding ListSummary}" FontSize="10" VerticalAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextMutedBrush}"/>
+                <Button Grid.Column="1" Content="{Binding AddAllShownText}" Command="{Binding AddAllShownToRunCommand}"
+                        Height="24" Padding="8,0" FontSize="10" Margin="8,0,0,0"
+                        Style="{StaticResource AccentOutlineButtonStyle}"
+                        Visibility="{Binding CanAddToRun, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        ToolTip="Put every story the list is showing on ⚡ H3 Express's STORIES list, in this order. Search first to narrow it down."/>
+            </Grid>
+
+            <Grid Grid.Row="2">
+                <ListBox ItemsSource="{Binding Stories}" SelectedItem="{Binding SelectedStory, Mode=TwoWay}"
+                         ItemContainerStyle="{StaticResource StoryItemStyle}"
+                         Background="Transparent" BorderThickness="0" Padding="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                    <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding Meta}" FontSize="10" Margin="0,2,0,0"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                    <TextBlock Text="{Binding Excerpt}" FontSize="11" Margin="0,5,0,0"
+                                               TextWrapping="Wrap" MaxHeight="30" TextTrimming="WordEllipsis"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <WrapPanel Margin="0,6,0,0">
+                                        <Border CornerRadius="3" Padding="5,1" Margin="0,0,4,0" BorderThickness="1"
+                                                BorderBrush="{DynamicResource TabAccentBrush}"
+                                                Visibility="{Binding IsInRunList, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="ON LIST" FontSize="8" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TabAccentBrush}"/>
+                                        </Border>
+                                        <Border CornerRadius="3" Padding="5,1" Margin="0,0,4,0"
+                                                Background="{StaticResource SurfaceAltBrush}"
+                                                Visibility="{Binding IsEdited, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="EDITED" FontSize="8" FontWeight="Bold"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        </Border>
+                                        <Border CornerRadius="3" Padding="5,1" Margin="0,0,4,0"
+                                                Background="{StaticResource SurfaceAltBrush}"
+                                                Visibility="{Binding IsImported, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="IMPORTED" FontSize="8" FontWeight="Bold"
+                                                       Foreground="{StaticResource TextMutedBrush}"/>
+                                        </Border>
+                                    </WrapPanel>
+                                </StackPanel>
+                                <!-- The clip count, big: it is what tells a whole film from a test run. -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Top" MinWidth="36">
+                                    <TextBlock Text="{Binding ClipCount}" FontFamily="Consolas" FontSize="20" FontWeight="Bold"
+                                               HorizontalAlignment="Center" Foreground="{DynamicResource TabAccentBrush}"/>
+                                    <TextBlock Text="clips" FontSize="9" HorizontalAlignment="Center"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <TextBlock Text="{Binding EmptyListText}" TextWrapping="Wrap" TextAlignment="Center"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20"
+                           FontSize="12" Foreground="{StaticResource TextMutedBrush}"
+                           Visibility="{Binding ShowEmptyList, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+            </Grid>
+        </Grid>
+
+        <!-- ═══ Right: one story's clips ════════════════════════════════════════ -->
+        <Border Grid.Row="1" Grid.Column="2" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10">
+            <Grid>
+                <!-- Nothing selected. -->
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="360">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasSelection}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="📚" FontSize="40" HorizontalAlignment="Center" Foreground="{StaticResource TextFaintBrush}"/>
+                    <TextBlock Text="Pick a story to see its clips" FontSize="14" FontWeight="SemiBold" Margin="0,10,0,4"
+                               HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <TextBlock TextWrapping="Wrap" TextAlignment="Center" FontSize="11"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Text="Every clip is its own prompt card. Edit them, reorder them, add or remove one — then save."/>
+                </StackPanel>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="22,18,22,18"
+                              Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel>
+                        <!-- Title and provenance -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding EditorTitle, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="18" FontWeight="SemiBold" Padding="6,4" Margin="-6,0,0,0"
+                                     BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrush}"
+                                     Background="Transparent"
+                                     ToolTip="The story's name in this list — and in the file names when it is rendered from the stories list after being added from here."/>
+                            <Button Grid.Column="1" Content="{Binding AddToRunText}" Command="{Binding AddToRunCommand}"
+                                    Height="34" Padding="14,0" Margin="12,0,0,0" FontSize="12" VerticalAlignment="Center"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Visibility="{Binding CanAddToRun, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    ToolTip="Put this story on ⚡ H3 Express's STORIES list. It renders like a story from the folder: the CAST card, these saved prompts, one film. It stays on the list next time the app opens."/>
+                        </Grid>
+                        <TextBlock Text="{Binding EditorOrigin}" FontSize="11" Margin="0,6,0,10" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextMutedBrush}"/>
+
+                        <ItemsControl ItemsSource="{Binding EditorFacts}" Margin="0,0,0,8">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource FactChipStyle}">
+                                        <TextBlock Text="{Binding}" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- The story and the wardrobe: reference material, shut by default. -->
+                        <Expander Margin="0,0,0,6">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Story" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="{Binding StoryWordCount}" FontSize="11" Margin="8,0,0,0"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+                            </Expander.Header>
+                            <TextBox Text="{Binding StoryText, Mode=OneWay}" IsReadOnly="True"
+                                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MaxHeight="220"
+                                     FontSize="12" Margin="0,8,0,4" Background="{StaticResource SurfaceAltBrush}"
+                                     BorderBrush="{StaticResource BorderBrush}"
+                                     ToolTip="The text the prompts are saved under. Change a word of the story file and it is a different story — these prompts will not be used for it."/>
+                        </Expander>
+
+                        <Expander Margin="0,0,0,14">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Wardrobe" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="locked in before the cast's portraits and sheets are made" FontSize="11" Margin="8,0,0,0"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+                            </Expander.Header>
+                            <StackPanel Margin="0,8,0,4">
+                                <TextBox Text="{Binding EditorWardrobe, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="54" MaxHeight="160"
+                                         VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11"/>
+                                <TextBlock FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Text="One line per character, as the tab writes it (Character 1 (&lt;Picture 1&gt;) wears: …). Empty lets the tab decide the outfits afresh — but the clips below may describe the old ones."/>
+                            </StackPanel>
+                        </Expander>
+
+                        <!-- The clips -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <ctrl:SectionHeader Title="CLIPS" Margin="0"/>
+                                <TextBlock FontSize="10" Margin="12,2,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Text="&lt;Picture 1&gt; and &lt;Picture 2&gt; are the cast. The reference line and wardrobe lock are added when a clip is queued."/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="＋ Add clip" Command="{Binding AddClipCommand}"
+                                    Height="30" Padding="12,0" VerticalAlignment="Center"
+                                    Style="{StaticResource AccentOutlineButtonStyle}"
+                                    ToolTip="Add an empty clip at the end of the story."/>
+                        </Grid>
+
+                        <ItemsControl ItemsSource="{Binding Clips}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="8" Padding="12,10,12,12" Margin="0,0,0,10"
+                                            Background="{StaticResource SurfaceBrush}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                                <Setter Property="BorderThickness" Value="1"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsEdited}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource TabAccentBrush}"/>
+                                                        <Setter Property="BorderThickness" Value="1.5"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Border Grid.Column="0" CornerRadius="4" Padding="7,2" VerticalAlignment="Center"
+                                                        Background="{DynamicResource TabAccentBrush}">
+                                                    <TextBlock Text="{Binding Header}" FontFamily="Consolas" FontSize="11"
+                                                               FontWeight="Bold" Foreground="White"/>
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                                                    <TextBlock Text="{Binding Stats}" FontSize="10" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                                    <Border CornerRadius="3" Padding="5,0" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                            Background="{StaticResource SurfaceAltBrush}"
+                                                            Visibility="{Binding NamesCharacter1, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                            ToolTip="This clip names character 1 (&lt;Picture 1&gt;).">
+                                                        <TextBlock Text="char 1" FontSize="9" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    </Border>
+                                                    <Border CornerRadius="3" Padding="5,0" Margin="4,0,0,0" VerticalAlignment="Center"
+                                                            Background="{StaticResource SurfaceAltBrush}"
+                                                            Visibility="{Binding NamesCharacter2, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                            ToolTip="This clip names character 2 (&lt;Picture 2&gt;).">
+                                                        <TextBlock Text="char 2" FontSize="9" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    </Border>
+                                                    <TextBlock Text="● edited" FontSize="10" FontWeight="SemiBold" Margin="10,0,0,0"
+                                                               VerticalAlignment="Center" Foreground="{DynamicResource TabAccentBrush}"
+                                                               Visibility="{Binding IsEdited, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Button Content="↑" Style="{StaticResource GlyphButtonStyle}"
+                                                            Command="{Binding DataContext.MoveClipUpCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}" ToolTip="Move this clip earlier in the story."/>
+                                                    <Button Content="↓" Style="{StaticResource GlyphButtonStyle}"
+                                                            Command="{Binding DataContext.MoveClipDownCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}" ToolTip="Move this clip later in the story."/>
+                                                    <Button Content="↺" Style="{StaticResource GlyphButtonStyle}"
+                                                            IsEnabled="{Binding CanRevert}"
+                                                            Command="{Binding DataContext.RevertClipCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}" ToolTip="Put this clip back to its saved prompt."/>
+                                                    <Button Content="✕" Style="{StaticResource GlyphButtonStyle}"
+                                                            Command="{Binding DataContext.RemoveClipCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}" ToolTip="Remove this clip from the story."/>
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     MinHeight="110" MaxHeight="360"
+                                                     FontFamily="Consolas" FontSize="11.5" Padding="10,8"
+                                                     Background="{StaticResource SurfaceAltBrush}"
+                                                     BorderBrush="{StaticResource BorderBrush}"
+                                                     SpellCheck.IsEnabled="False"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- ═══ Footer ════════════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="2" Grid.ColumnSpan="3" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Content="🗑 Forget story" Command="{Binding DeleteCommand}"
+                    Height="34" Padding="14,0" Margin="0,0,8,0"
+                    Style="{StaticResource DangerButtonStyle}"
+                    ToolTip="Delete this story's saved prompts. Its next render writes them from scratch. A copy is kept in the history folder."/>
+            <Button Grid.Column="1" Content="📄 Show story file" Command="{Binding OpenSourceCommand}"
+                    Height="34" Padding="14,0"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    ToolTip="Show the .txt this story was last loaded from in Explorer."/>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,14,0">
+                <Ellipse Width="7" Height="7" Margin="0,0,6,0" VerticalAlignment="Center"
+                         Fill="{DynamicResource TabAccentBrush}"
+                         Visibility="{Binding IsDirty, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <TextBlock Text="{Binding DirtySummary}" FontSize="11" VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDirty}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+
+            <Button Grid.Column="3" Content="Discard" Command="{Binding DiscardCommand}"
+                    Height="34" Padding="14,0" Margin="0,0,8,0"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    ToolTip="Throw away the unsaved edits to this story."/>
+            <Button Grid.Column="4" Content="💾 Save changes" Command="{Binding SaveCommand}"
+                    Height="34" Padding="18,0" Margin="0,0,8,0" FontSize="13"
+                    Style="{StaticResource AccentButtonStyle}"
+                    ToolTip="Save this story's prompts (Ctrl+S). The version it replaces is kept in history."/>
+            <Button Grid.Column="5" Content="Close" Click="CloseButton_Click"
+                    Height="34" Padding="16,0"
+                    Style="{StaticResource SecondaryButtonStyle}"/>
+        </Grid>
+    </Grid>
+</Window>

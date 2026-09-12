@@ -400,6 +400,7 @@ namespace FlipPix.UI.ViewModels.Video
                 local ??= FindTokenImageOnDisk(runToken);
                 if (local == null || !File.Exists(local))
                     throw new Exception($"Character {slot.Index}'s photo was not produced.");
+                local = await KeepCastPhotoAsync(local);
 
                 // Exactly what browsing for it does — the sheet build, the references and the
                 // refine pass all take it from there. A portrait is not yet a reference; the
@@ -432,6 +433,43 @@ namespace FlipPix.UI.ViewModels.Video
                 lease?.Dispose();
                 slot.IsGeneratingPhoto = false;
                 OnCanExecuteChanged();
+            }
+        }
+
+        /// <summary>Where a generated cast photo is kept, or null to leave it in ComfyUI's output folder. ⚡ H3 Express
+        /// keeps its cast beside the sheet library (<see cref="CastSheetLibrary.PhotoFolder"/>).</summary>
+        protected virtual string? CastPhotoArchiveFolder => null;
+
+        /// <summary>
+        /// Copies a freshly generated photo into <see cref="CastPhotoArchiveFolder"/> and returns the copy, which is
+        /// what goes on the card — so the sheet library files a path that outlives the output folder. The original
+        /// when there is nowhere to keep it or the copy fails.
+        /// </summary>
+        private async Task<string> KeepCastPhotoAsync(string local)
+        {
+            var folder = CastPhotoArchiveFolder;
+            if (string.IsNullOrWhiteSpace(folder)) return local;
+
+            try
+            {
+                var target = Path.Combine(folder, Path.GetFileName(local));
+                if (string.Equals(Path.GetFullPath(local), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
+                    return local;
+
+                // The name carries the run's timestamp, so a file already there is this same photo.
+                await Task.Run(() =>
+                {
+                    Directory.CreateDirectory(folder);
+                    if (!File.Exists(target)) File.Copy(local, target);
+                });
+                AddLog($"Cast photo kept in {folder}.");
+                return target;
+            }
+            catch (Exception ex)
+            {
+                AddLog($"WARNING: the cast photo could not be copied to {folder} ({ex.Message}) — it is used from " +
+                       $"{Path.GetDirectoryName(local)}.");
+                return local;
             }
         }
 

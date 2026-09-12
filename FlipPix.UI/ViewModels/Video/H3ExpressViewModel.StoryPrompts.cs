@@ -414,6 +414,7 @@ namespace FlipPix.UI.ViewModels.Video
             var wardrobe = saved?.Wardrobe?.Trim() ?? string.Empty;
             if (HasCastOverride && CastOwnClothes)
             {
+                await OutfitsFromSheetLibraryAsync(token);
                 var own = await OwnClothesWardrobeAsync(token);
                 token.ThrowIfCancellationRequested();
                 if (own.Length > 0)
@@ -431,8 +432,13 @@ namespace FlipPix.UI.ViewModels.Video
 
             if (wardrobe.Length > 0) AdoptWardrobe(wardrobe);
 
-            // The same photographs in the same outfit as an earlier story need no new sheet.
-            if (HasCastOverride && HasCastWardrobe) await AdoptSheetsInWardrobeAsync();
+            // The same photographs in the same outfit as an earlier story need no new sheet — and in their own
+            // clothes, any saved sheet of the photo showing those clothes will do.
+            if (HasCastOverride && HasCastWardrobe)
+            {
+                if (CastOwnClothes) await AdoptOwnClothesSheetsAsync(token);
+                else await AdoptSheetsInWardrobeAsync();
+            }
         }
 
         /// <summary>

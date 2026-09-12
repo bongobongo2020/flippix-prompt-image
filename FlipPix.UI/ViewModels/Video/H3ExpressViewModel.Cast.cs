@@ -149,8 +149,9 @@ namespace FlipPix.UI.ViewModels.Video
                     : string.Empty;
 
                 return CastOwnClothes
-                    ? $"{who} in every story, in their own clothes{rest}. A saved story's clips are re-dressed to " +
-                      "match — one short LLM call per clip, kept for next time — and a new story is written in them."
+                    ? $"{who} in every story, in their own clothes{rest}. A sheet already saved from the same photo " +
+                      "is reused. A saved story's clips are re-dressed to match — one short LLM call per clip, kept " +
+                      "for next time — and a new story is written in them."
                     : $"{who} in every story{rest}, dressed in each story's own wardrobe. Saved clips are used as " +
                       "they are; the sheets re-dress your people.";
             }
@@ -308,6 +309,71 @@ namespace FlipPix.UI.ViewModels.Video
                 AddLog($"WARNING: character {m.Index} has no outfit of their own, so they wear the story's instead.");
 
             return string.Join("\n", CastMembers.Select(m => m.WardrobeLineFor(SlotOf(m))).Where(l => l.Length > 0));
+        }
+
+        // ── The cast folder and its sheets ──────────────────────────────────────────────────────────
+
+        /// <summary>Every cast photo a run generates is kept in Pictures\cast, beside the sheets in Pictures\cast\sheets.</summary>
+        protected override string? CastPhotoArchiveFolder => SheetLibrary.PhotoFolder;
+
+        /// <summary>A sheet built for one of the run's photos while they wear their own clothes is filed as such.</summary>
+        protected override bool SheetIsInOwnClothes(CharacterSlot slot, string outfit) =>
+            HasCastOverride && CastOwnClothes && outfit.Length > 0 &&
+            CastMembers.Any(m => m.HasPhoto && m.HasOutfitForPhoto &&
+                                 string.Equals(m.PhotoPath, slot.SourcePath, StringComparison.OrdinalIgnoreCase) &&
+                                 CastSheetLibrary.SameOutfit(m.Outfit, outfit));
+
+        /// <summary>
+        /// A photo whose outfit has not been read, but which already has a sheet filed in its own clothes, takes the
+        /// outfit that sheet was built wearing: no vision call, and that sheet then matches the wardrobe exactly.
+        /// </summary>
+        private async Task OutfitsFromSheetLibraryAsync(CancellationToken token)
+        {
+            foreach (var m in CastMembers.Where(m => m.HasPhoto && !m.HasOutfitForPhoto).ToList())
+            {
+                var photo = m.PhotoPath;
+                CastSheetLibrary.Match? match;
+                try
+                {
+                    match = await FindOwnClothesSheetAsync(photo, null, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    AddLog($"Cast: the sheet library could not be checked for {m.PhotoName} ({ex.Message}).");
+                    continue;
+                }
+
+                if (match?.Entry is not { OwnClothes: true, Wardrobe: { } worn } || string.IsNullOrWhiteSpace(worn)) continue;
+                if (m.HasOutfitForPhoto || !string.Equals(m.PhotoPath, photo, StringComparison.OrdinalIgnoreCase)) continue;
+
+                m.OutfitSource = photo;
+                m.Outfit = worn.Trim().TrimEnd('.', ' ');
+                AddLog($"Cast: character {m.Index} wears {m.Outfit} — taken from their saved sheet " +
+                       $"({Path.GetFileName(match.SheetPath)}), so the photo is not read again.");
+            }
+        }
+
+        /// <summary>
+        /// Own clothes: each photographed card takes a sheet already built from its photo in the clothes the photo
+        /// shows, whatever words the outfit was filed under. Runs once the wardrobe is locked.
+        /// </summary>
+        private async Task AdoptOwnClothesSheetsAsync(CancellationToken token)
+        {
+            foreach (var m in CastMembers.Where(m => m.HasPhoto && m.HasOutfitForPhoto).ToList())
+            {
+                var card = SlotOf(m) == 2 ? Character2 : Character1;
+                if (!string.Equals(card.SourcePath, m.PhotoPath, StringComparison.OrdinalIgnoreCase)) continue;
+                // Only while the card's locked line is this person's own outfit — otherwise the sheet would be
+                // recorded as wearing a story's clothes it does not show.
+                if (!CastSheetLibrary.SameOutfit(CastPromptStamp.OutfitFor(CastWardrobe, card.Index), m.Outfit)) continue;
+
+                await AdoptOwnClothesSheetAsync(card, token);
+                token.ThrowIfCancellationRequested();
+            }
         }
 
         // ── Onto the story ──────────────────────────────────────────────────────────────────────────

@@ -731,6 +731,67 @@ namespace FlipPix.UI.ViewModels.Video
             }
         }
 
+        /// <summary>Whether the sheet about to be filed for this card shows the person in the clothes they wear in
+        /// their own photograph — filed that way so a later run can find it even when the outfit is worded
+        /// differently. No here; ⚡ H3 Express says yes for a cast in their own clothes.</summary>
+        protected virtual bool SheetIsInOwnClothes(CharacterSlot slot, string outfit) => false;
+
+        /// <summary>A sheet already built from this photograph in the clothes worn in it, once the build-log
+        /// back-fill has landed. See <see cref="CastSheetLibrary.FindInOwnClothesAsync"/>.</summary>
+        protected async Task<CastSheetLibrary.Match?> FindOwnClothesSheetAsync(string photo, string? outfit,
+                                                                               CancellationToken token)
+        {
+            if (!ReuseSheetsFromLibrary) return null;
+            var library = SheetLibrary;
+            if (_sheetLibrarySync != null) await _sheetLibrarySync;
+            return await library.FindInOwnClothesAsync(photo, outfit, token);
+        }
+
+        /// <summary>
+        /// For a card whose person wears their own clothes: puts back a sheet already built from the same
+        /// photograph showing those clothes, recorded as wearing the card's locked outfit so 🍀's sheet step
+        /// leaves it alone. True when a sheet was adopted.
+        /// </summary>
+        protected async Task<bool> AdoptOwnClothesSheetAsync(CharacterSlot slot, CancellationToken token)
+        {
+            if (!ReuseSheetsFromLibrary || slot.UseSourceAsSheet || slot.SheetMatchesWardrobe) return false;
+            var outfit = CastPromptStamp.OutfitFor(CastWardrobe, slot.Index);
+            var source = slot.SourcePath;
+            if (outfit.Length == 0 || string.IsNullOrEmpty(source)) return false;
+
+            try
+            {
+                var match = await FindOwnClothesSheetAsync(source, outfit, token);
+                if (!string.Equals(slot.SourcePath, source, StringComparison.OrdinalIgnoreCase)) return false;
+                if (match == null)
+                {
+                    AddLog($"Character {slot.Index}: no saved sheet of {Path.GetFileName(source)} in their own clothes " +
+                           $"yet — one is built now and filed in {SheetLibrary.Folder}.");
+                    return false;
+                }
+
+                slot.SetSheet(match.SheetPath, outfit);
+                OnCharacterChanged();
+                var how = CastSheetLibrary.SameOutfit(match.Entry.Wardrobe, outfit)
+                    ? "built in this outfit"
+                    : match.Entry.OwnClothes == true
+                        ? "built in their own clothes"
+                        : "built in the clothes the photo shows";
+                AddLog($"Character {slot.Index}: reusing the saved sheet of {Path.GetFileName(source)} " +
+                       $"({Path.GetFileName(match.SheetPath)}, {how}) — no Qwen pass needed.");
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                AddLog($"Character {slot.Index}: the sheet library could not be checked ({ex.Message}).");
+                return false;
+            }
+        }
+
         /// <summary>True while the sheet builder is waiting for the GPU or generating. Its own flag, kept
         /// apart from <see cref="VideoProcessingBaseViewModel.IsProcessing"/> so the two can overlap without
         /// fighting over the progress bar a render owns.</summary>
@@ -911,7 +972,8 @@ namespace FlipPix.UI.ViewModels.Video
 
             // Filed after the card has it, never before: the sheet is this run's whatever happens next, and
             // a library write that failed must not read as a build that failed.
-            await SheetLibrary.RecordAsync(slot.SourcePath, applied, slot.Index, slot.Noun, wornInSheet, token);
+            await SheetLibrary.RecordAsync(slot.SourcePath, applied, slot.Index, slot.Noun, wornInSheet, token,
+                                           ownClothes: SheetIsInOwnClothes(slot, wornInSheet));
         }
 
         /// <summary>

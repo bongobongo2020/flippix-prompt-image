@@ -61,13 +61,17 @@ namespace FlipPix.UI.Services
             _log = log;
         }
 
-        /// <summary>Where the sheets live. Beside the rest of the app's pictures, under the cast's own
-        /// folder — the place the sheets were already being filed by hand.</summary>
+        /// <summary>Where the sheets live: <c>Pictures\cast\sheets</c>, inside the folder the cast photos are
+        /// kept in (<see cref="PhotoFolder"/>).</summary>
         public static string DefaultFolder => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-            "flippix-images", "faces-ai", "cast", "sheets");
+            Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "cast", "sheets");
 
         public string Folder { get; }
+
+        /// <summary>Where cast photos are kept: the folder the sheets folder sits in, so a photo and the sheets
+        /// built from it stay together wherever the library is moved.</summary>
+        public string PhotoFolder =>
+            Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Folder)) is { Length: > 0 } parent ? parent : Folder;
 
         public string IndexPath => Path.Combine(Folder, IndexFileName);
 
@@ -107,6 +111,11 @@ namespace FlipPix.UI.Services
             /// Carried because <c>CharacterSlot.SheetMatchesWardrobe</c> reads it — an adopted sheet with
             /// no wardrobe recorded would nag to be rebuilt the moment a wardrobe was locked.</summary>
             public string? Wardrobe { get; set; }
+
+            /// <summary>True when <see cref="Wardrobe"/> is what the person wears in the photograph itself — read
+            /// off it for ⚡ H3 Express's "their own clothes" — rather than an outfit from a story. Null when that is
+            /// not known, which is every entry filed before this existed.</summary>
+            public bool? OwnClothes { get; set; }
 
             public DateTime BuiltUtc { get; set; }
         }
@@ -160,19 +169,10 @@ namespace FlipPix.UI.Services
                     !string.Equals((e.Wardrobe ?? string.Empty).Trim(), wardrobe.Trim(), StringComparison.OrdinalIgnoreCase))
                     continue;
 
+                if (Classify(e, sourcePhotoPath, name, hash) is not { } kind) continue;
+
                 var sheetPath = Path.Combine(Folder, e.SheetFile);
                 if (!File.Exists(sheetPath)) continue;
-
-                MatchKind kind;
-                if (!string.IsNullOrEmpty(e.SourcePath) &&
-                    string.Equals(e.SourcePath, sourcePhotoPath, StringComparison.OrdinalIgnoreCase))
-                    kind = MatchKind.SourcePath;
-                else if (hash != null && string.Equals(e.SourceHash, hash, StringComparison.OrdinalIgnoreCase))
-                    kind = MatchKind.SourceHash;
-                else if (string.Equals(e.SourceFile, name, StringComparison.OrdinalIgnoreCase))
-                    kind = MatchKind.SourceName;
-                else
-                    continue;
 
                 if (best == null || kind < best.Confidence ||
                     (kind == best.Confidence && e.BuiltUtc > best.Entry.BuiltUtc))
@@ -182,6 +182,81 @@ namespace FlipPix.UI.Services
             return best;
         }
 
+        /// <summary>
+        /// The sheet already built from this photograph that shows the clothes the person wears <i>in</i> it, or
+        /// null. Three kinds count, best first: one built wearing exactly <paramref name="outfit"/>; one filed as
+        /// their own clothes under other words (the vision model does not describe one photo the same way twice);
+        /// and one built with no outfit at all, because the sheet brief keeps the photo's clothing. The last two
+        /// are taken only on the photo's path or bytes — a file name alone is not enough to put a stranger's sheet
+        /// on someone. Among equals, the strongest match and then the newest.
+        /// </summary>
+        public async Task<Match?> FindInOwnClothesAsync(string? sourcePhotoPath, string? outfit,
+                                                         CancellationToken token = default)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePhotoPath)) return null;
+
+            var index = await LoadAsync(token).ConfigureAwait(false);
+            if (index.Entries.Count == 0) return null;
+
+            var name = Path.GetFileName(sourcePhotoPath);
+            var hash = await Task.Run(() => TryHash(sourcePhotoPath), token).ConfigureAwait(false);
+            var wanted = OutfitKey(outfit);
+
+            Match? best = null;
+            var bestRank = int.MaxValue;
+            foreach (var e in index.Entries)
+            {
+                if (Classify(e, sourcePhotoPath, name, hash) is not { } kind) continue;
+
+                var worn = OutfitKey(e.Wardrobe);
+                int rank;
+                if (wanted.Length > 0 && worn == wanted) rank = 0;
+                else if (kind == MatchKind.SourceName) continue;
+                else if (e.OwnClothes == true) rank = 1;
+                else if (worn.Length == 0) rank = 2;
+                else continue;
+
+                var sheetPath = Path.Combine(Folder, e.SheetFile);
+                if (!File.Exists(sheetPath)) continue;
+
+                if (best == null || rank < bestRank ||
+                    (rank == bestRank && (kind < best.Confidence ||
+                                          (kind == best.Confidence && e.BuiltUtc > best.Entry.BuiltUtc))))
+                {
+                    best = new Match(e, sheetPath, kind);
+                    bestRank = rank;
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>Whether two outfit lines describe the same clothes word for word, ignoring case, spacing and
+        /// the closing full stop.</summary>
+        public static bool SameOutfit(string? a, string? b)
+        {
+            var key = OutfitKey(a);
+            return key.Length > 0 && key == OutfitKey(b);
+        }
+
+        private static string OutfitKey(string? outfit) =>
+            string.Join(' ', (outfit ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+                  .TrimEnd('.', ' ')
+                  .ToLowerInvariant();
+
+        /// <summary>How an entry matches a photograph, or null when it is another photograph.</summary>
+        private static MatchKind? Classify(Entry e, string sourcePhotoPath, string name, string? hash)
+        {
+            if (!string.IsNullOrEmpty(e.SourcePath) &&
+                string.Equals(e.SourcePath, sourcePhotoPath, StringComparison.OrdinalIgnoreCase))
+                return MatchKind.SourcePath;
+            if (hash != null && string.Equals(e.SourceHash, hash, StringComparison.OrdinalIgnoreCase))
+                return MatchKind.SourceHash;
+            if (string.Equals(e.SourceFile, name, StringComparison.OrdinalIgnoreCase))
+                return MatchKind.SourceName;
+            return null;
+        }
+
         // ── Recording ───────────────────────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -189,8 +264,10 @@ namespace FlipPix.UI.Services
         /// records what it was built from. Failure is swallowed and logged — a library that cannot be
         /// written is a lost shortcut, never a lost sheet.
         /// </summary>
+        /// <param name="ownClothes">The wardrobe is what the person wears in the photograph itself.</param>
         public async Task RecordAsync(string sourcePhotoPath, string sheetPath, int slot,
-                                      string? sex, string? wardrobe, CancellationToken token = default)
+                                      string? sex, string? wardrobe, CancellationToken token = default,
+                                      bool ownClothes = false)
         {
             try
             {
@@ -212,6 +289,7 @@ namespace FlipPix.UI.Services
                     Slot = slot,
                     Sex = string.IsNullOrWhiteSpace(sex) ? null : sex,
                     Wardrobe = string.IsNullOrWhiteSpace(wardrobe) ? null : wardrobe!.Trim(),
+                    OwnClothes = ownClothes && !string.IsNullOrWhiteSpace(wardrobe) ? true : null,
                     BuiltUtc = DateTime.UtcNow
                 };
 

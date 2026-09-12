@@ -194,7 +194,7 @@ public class ComfyUISettings
 
     // Where already-built character sheets are kept, so loading a cast photo the app has seen before brings
     // its sheet back instead of paying Qwen-Image-Edit for it again. Empty means the default,
-    // Pictures/flippix-images/faces-ai/cast/sheets — the folder they were already being filed into by hand.
+    // Pictures/cast/sheets; ⚡ H3 Express keeps the cast photos it generates one level up, in Pictures/cast.
     public string CastSheetLibraryFolder { get; set; } = string.Empty;
 
     // H3 Batch tab: the folder of story .txt files it walks, and its own diffusion-model slot. The folder
